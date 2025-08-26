@@ -54,7 +54,7 @@ impl State {
             current_term: 0,
             voted_for: None,
             // a dummy entry at 0: supports 1-based indexing as in the paper.
-            // *term does not matter here*
+            // *term needs to be 0:* empty log cases grab this term.
             log: vec![LogEntry {
                 term: 0,
                 cmd: AppEvent::Noop(),
@@ -118,25 +118,33 @@ impl State {
             candidate_id: self.id,
             // even with 1-indexing on the protocol, our highest index is len()-1 because our
             // log is still 0-indexed.
-            last_log_index: self.log.len() - 1,
-            // TODO: might be empty!
-            last_log_term: self.log[self.log.len() - 1].term,
+            last_log_index: self.last_index(),
+            last_log_term: self.last_entry().term,
         }
     }
 
     fn become_leader(&mut self) -> Response {
         self.t = Type::Leader {
-            next_index: vec![self.log.len(); net::config::COUNT],
+            next_index: vec![self.last_index() + 1; net::config::COUNT],
             match_index: vec![0; net::config::COUNT],
         };
         Response::Heartbeat {
             term: self.current_term,
             id: self.id,
-            // TODO: may be negative!
-            prev_log_index: self.log.len() - 1,
-            prev_log_term: self.log.last().map(|e| e.term).unwrap_or(0),
+            prev_log_index: self.last_index(),
+            prev_log_term: self.last_entry().term,
             commit: self.commit_index,
         }
+    }
+
+    fn last_index(&self) -> usize {
+        // Dummy value guarantees we don't underflow the usize: might return 0, though
+        assert!(!self.log.is_empty());
+        self.log.len() - 1
+    }
+
+    fn last_entry(&self) -> &LogEntry {
+        &self.log[self.last_index()]
     }
 }
 
