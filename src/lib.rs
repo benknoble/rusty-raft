@@ -18,7 +18,6 @@ pub struct State {
     /// highest applied entry
     last_applied: usize,
     /// who am i?
-    #[expect(unused)]
     t: Type,
 }
 
@@ -71,6 +70,11 @@ impl State {
                 Response::Ok()
             }
         }
+    }
+
+    #[expect(unused)]
+    fn become_follower(&mut self) {
+        self.t = Type::Follower();
     }
 }
 
