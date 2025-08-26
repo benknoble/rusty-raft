@@ -78,7 +78,14 @@ impl State {
                 }
                 Response::Ok()
             }
-            ElectionTimeout() => self.become_candidate(),
+            ElectionTimeout() => {
+                use Type::*;
+                match self.t {
+                    // maybe we've converted before the most recent timeout; ignore it
+                    Leader { .. } => Response::Ok(),
+                    _ => self.become_candidate(),
+                }
+            }
             VoteResponse { term, vote_granted } => {
                 if term > self.current_term {
                     self.become_follower();
