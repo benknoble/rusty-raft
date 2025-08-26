@@ -95,8 +95,7 @@ impl State {
             }
             VoteResponse { term, vote_granted } => {
                 if term > self.current_term {
-                    self.become_follower();
-                    self.current_term = term;
+                    self.become_follower(term);
                     return Response::Ok();
                 }
                 use Type::*;
@@ -117,8 +116,11 @@ impl State {
         }
     }
 
-    fn become_follower(&mut self) {
+    fn become_follower(&mut self, term: usize) {
+        assert!(term > self.current_term);
         self.t = Type::Follower();
+        self.current_term = term;
+        self.voted_for = None;
     }
 
     fn become_candidate(&mut self) -> Response {
