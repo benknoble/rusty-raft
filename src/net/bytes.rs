@@ -8,9 +8,9 @@ impl State {
         buf
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, ParseError> {
+    pub fn from_bytes(id: usize, bytes: &[u8]) -> Result<Self, ParseError> {
         let (term, vote, log) = serde_lexpr::from_slice(bytes)?;
-        let mut s = Self::new();
+        let mut s = Self::new(id);
         s.current_term = term;
         s.voted_for = vote;
         s.log = log;

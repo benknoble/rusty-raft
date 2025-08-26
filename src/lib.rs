@@ -17,8 +17,10 @@ pub struct State {
     commit_index: usize,
     /// highest applied entry
     last_applied: usize,
-    /// who am i?
+    /// what am i?
     t: Type,
+    /// who am i?
+    id: usize,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -31,7 +33,9 @@ struct LogEntry {
 #[derive(Debug, Deserialize, Serialize)]
 enum Type {
     Follower(),
-    Candidate(),
+    Candidate {
+        votes: usize,
+    },
     Leader {
         /// for each host h, next_index[h] is the index of the next log entry to send h
         next_index: Vec<usize>,
@@ -41,7 +45,7 @@ enum Type {
 }
 
 impl State {
-    pub fn new() -> Self {
+    pub fn new(id: usize) -> Self {
         Self {
             current_term: 0,
             voted_for: None,
@@ -55,6 +59,7 @@ impl State {
             commit_index: 0,
             last_applied: 0,
             t: Type::Follower(),
+            id,
         }
     }
 
@@ -69,6 +74,7 @@ impl State {
                 }
                 Response::Ok()
             }
+            ElectionTimeout() => self.become_candidate(),
         }
     }
 
@@ -76,23 +82,41 @@ impl State {
     fn become_follower(&mut self) {
         self.t = Type::Follower();
     }
-}
 
-impl Default for State {
-    fn default() -> Self {
-        Self::new()
+    fn become_candidate(&mut self) -> Response {
+        self.current_term += 1;
+        self.voted_for = Some(self.id);
+        self.t = Type::Candidate { votes: 1 };
+        // who sends out the RPCs? if we had a Vec<Networkable>, we could, but we would also need
+        // some form of (fake?) parallelism
+        Response::StartElection {
+            term: self.current_term,
+            candidate_id: self.id,
+            // even with 1-indexing on the protocol, our highest index is len()-1 because our
+            // log is still 0-indexed.
+            last_log_index: self.log.len() - 1,
+            last_log_term: self.log[self.log.len() - 1].term,
+        }
     }
 }
 
 #[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum Response {
     Ok(),
+    /// enough details to make a RequestVote RPC
+    StartElection {
+        term: usize,
+        candidate_id: usize,
+        last_log_index: usize,
+        last_log_term: usize,
+    },
 }
 
 /// Some events are `crate::net::Request`s, but not all!
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Event {
     ApplyEntries(),
+    ElectionTimeout(),
 }
 
 // App
