@@ -27,11 +27,18 @@ pub struct State {
     id: usize,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 struct LogEntry {
     /// when seen by leader
     term: usize,
     cmd: AppEvent,
+}
+
+impl LogEntry {
+    #[expect(unused)]
+    fn new(term: usize, cmd: AppEvent) -> Self {
+        Self { term, cmd }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -144,6 +151,8 @@ impl State {
         }
     }
 
+    // Log functions
+
     fn last_index(&self) -> usize {
         // Dummy value guarantees we don't underflow the usize: might return 0, though
         assert!(!self.log.is_empty());
@@ -152,6 +161,163 @@ impl State {
 
     fn last_entry(&self) -> &LogEntry {
         &self.log[self.last_index()]
+    }
+
+    #[expect(unused)]
+    fn append_entries(&mut self, r: AppendEntries) -> AppendEntriesResponse {
+        macro_rules! fail {
+            () => {
+                return AppendEntriesResponse::fail(self.current_term)
+            };
+        }
+        if r.term < self.current_term {
+            fail!();
+        }
+        match self.log.get(r.prev_log_index) {
+            None => fail!(),
+            Some(e) if e.term != r.prev_log_term => fail!(),
+            Some(e) => {
+                assert!(e.term == r.prev_log_term);
+            }
+        };
+        // NOTE truncate operates in terms of a 0-indexed length, but we are passing an index!
+        // Since the Raft protocol uses 1-indexing, this index _is_ a length, but not the right
+        // one. See tests. In particular, we are sitting at
+        //   [ Dummy, a, b, …, i, …, n ]
+        // where n is at index n. We've been given
+        //   [ Dummy, a, b, …, i,  ]
+        //                       ^ insert
+        // where i is at index i. We are going to insert at I=i+1, so we drop everything after I.
+        // That means we want a length of I+1, or i+2! To make this more visible, track the "^"
+        // insert location rather than the last entry while walking entries to append; that builds
+        // in the first "+1" in the "+2."
+        let mut index_to_insert = r.prev_log_index + 1;
+        for e in r.entries {
+            match self.log.get(index_to_insert) {
+                // Already there: skip.
+                Some(existing_e) if e.term == existing_e.term => (),
+                // End of the line: append the rest.
+                None => self.log.push(e),
+                // Conflict: drop our data and keep going.
+                Some(_) => {
+                    self.log.truncate(index_to_insert + 1);
+                    self.log.push(e);
+                }
+            }
+            index_to_insert += 1;
+        }
+        if r.commit > self.commit_index {
+            self.commit_index = std::cmp::min(r.commit, self.last_index());
+        }
+        AppendEntriesResponse::succeed(self.current_term)
+    }
+}
+
+#[cfg(test)]
+mod append_entries_test {
+    use super::*;
+
+    fn assert_fail(r: AppendEntriesResponse) {
+        assert!(!r.success);
+    }
+
+    fn assert_success(r: AppendEntriesResponse) {
+        assert!(r.success);
+    }
+
+    #[test]
+    fn test_append_entries() {
+        // this particular test doesn't look at "commit" fields at all
+        use AppEvent::*;
+
+        let base = vec![
+            LogEntry::new(1, Noop()),
+            LogEntry::new(1, Noop()),
+            LogEntry::new(1, Noop()),
+            LogEntry::new(2, Noop()),
+            LogEntry::new(2, Noop()),
+            LogEntry::new(3, Noop()),
+        ];
+
+        let mut s = State::new(0);
+        s.log.extend(base.clone());
+        s.current_term = 3;
+        // "normal" heartbeat append
+        assert_success(s.append_entries(AppendEntries {
+            term: 3,
+            leader_id: 1,
+            prev_log_index: 6,
+            prev_log_term: 3,
+            commit: 0,
+            entries: vec![],
+        }));
+        assert_eq!(s.log[1..], base);
+
+        // "normal" actual append
+        assert_success(s.append_entries(AppendEntries {
+            term: 3,
+            leader_id: 1,
+            prev_log_index: 6,
+            prev_log_term: 3,
+            commit: 0,
+            entries: vec![LogEntry::new(3, Noop())],
+        }));
+        assert_eq!(s.log[1..], {
+            let mut x = base.clone();
+            x.push(LogEntry::new(3, Noop()));
+            x
+        });
+
+        // "overwrite" append
+        assert_success(s.append_entries(AppendEntries {
+            term: 4, // this term increased: new leader
+            leader_id: 1,
+            prev_log_index: 4,
+            prev_log_term: 2,
+            commit: 0,
+            // conflict! follow the leader
+            entries: vec![LogEntry::new(3, Noop())],
+        }));
+        assert_eq!(s.log[1..], {
+            let mut x: Vec<_> = base[..=4].into();
+            x.push(LogEntry::new(3, Noop()));
+            x
+        });
+
+        // out of order heartbeat
+        assert_success(s.append_entries(AppendEntries {
+            term: 4, // this term increased: new leader
+            leader_id: 1,
+            prev_log_index: 4,
+            prev_log_term: 2,
+            commit: 0,
+            entries: vec![],
+        }));
+        assert_eq!(s.log[1..], {
+            let mut x: Vec<_> = base[..=4].into();
+            x.push(LogEntry::new(3, Noop()));
+            x
+        });
+
+        // old leader
+        assert_fail(s.append_entries(AppendEntries {
+            term: 3,
+            leader_id: 1,
+            prev_log_index: 5,
+            prev_log_term: 3,
+            commit: 0,
+            entries: vec![],
+        }));
+
+        // disagreement about old state
+        assert_fail(s.append_entries(AppendEntries {
+            term: 4,
+            leader_id: 1,
+            prev_log_index: 5,
+            prev_log_term: 4,
+            commit: 0,
+            entries: vec![],
+        }));
     }
 }
 
@@ -183,6 +349,38 @@ pub enum Event {
     VoteResponse { term: usize, vote_granted: bool },
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AppendEntries {
+    term: usize,
+    leader_id: usize,
+    prev_log_index: usize,
+    prev_log_term: usize,
+    commit: usize,
+    entries: Vec<LogEntry>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct AppendEntriesResponse {
+    term: usize,
+    success: bool,
+}
+
+impl AppendEntriesResponse {
+    fn succeed(term: usize) -> Self {
+        Self {
+            term,
+            success: true,
+        }
+    }
+
+    fn fail(term: usize) -> Self {
+        Self {
+            term,
+            success: false,
+        }
+    }
+}
+
 // App
 
 #[derive(Default, Debug)]
@@ -197,7 +395,7 @@ impl AppState {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum AppEvent {
     Noop(),
 }
