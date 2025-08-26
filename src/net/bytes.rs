@@ -18,6 +18,12 @@ impl std::str::FromStr for Request {
     }
 }
 
+impl Request {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        serde_lexpr::to_vec(self).expect("serialization error")
+    }
+}
+
 pub struct Parser<R>(serde_lexpr::parse::Parser<R>);
 pub enum ParseError {
     P(serde_lexpr::parse::Error),
@@ -49,12 +55,10 @@ impl<R> Parser<serde_lexpr::parse::IoRead<R>>
 where
     R: io::Read,
 {
-    #[expect(unused)]
     pub fn from_reader(reader: R) -> Self {
         Self(serde_lexpr::parse::Parser::from_reader(reader))
     }
 
-    #[expect(unused)]
     pub fn iter<T>(&mut self) -> impl Iterator<Item = Result<T, ParseError>>
     where
         T: for<'a> Deserialize<'a>,
@@ -65,7 +69,17 @@ where
         })
     }
 
-    #[expect(unused)]
+    #[allow(clippy::should_implement_trait)]
+    pub fn into_iter<T>(self) -> impl Iterator<Item = Result<T, ParseError>>
+    where
+        T: for<'a> Deserialize<'a>,
+    {
+        self.0.map(|v| {
+            v.map_err(ParseError::from)
+                .and_then(|v| serde_lexpr::from_value::<T>(&v).map_err(Into::into))
+        })
+    }
+
     pub fn parse<T>(&mut self) -> Result<T, ParseError>
     where
         T: for<'a> Deserialize<'a>,
