@@ -12,13 +12,10 @@ pub struct State {
     voted_for: Option<usize>,
     log: Vec<LogEntry>,
     // volatile state
-    #[expect(unused)]
     state: AppState,
     /// highest committed entry
-    #[expect(unused)]
     commit_index: usize,
     /// highest applied entry
-    #[expect(unused)]
     last_applied: usize,
     /// who am i?
     #[expect(unused)]
@@ -63,9 +60,17 @@ impl State {
     }
 
     pub fn next<S: Snapshotter>(&mut self, #[expect(unused)] s: &mut S, e: Event) -> Response {
-        #[expect(unused)]
         use Event::*;
-        match e {}
+        match e {
+            ApplyEntries() => {
+                #[expect(unreachable_code)]
+                while self.commit_index > self.last_applied {
+                    self.last_applied += 1;
+                    self.state.next(self.log[self.last_applied].cmd.clone());
+                }
+                Response::Ok()
+            }
+        }
     }
 }
 
@@ -76,11 +81,15 @@ impl Default for State {
 }
 
 #[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub enum Response {}
+pub enum Response {
+    Ok(),
+}
 
 /// Some events are `crate::net::Request`s, but not all!
 #[derive(Debug, Deserialize, Serialize)]
-pub enum Event {}
+pub enum Event {
+    ApplyEntries(),
+}
 
 // App
 
@@ -88,7 +97,6 @@ pub enum Event {}
 pub struct AppState {}
 
 impl AppState {
-    #[expect(unused)]
     fn next(&mut self, e: AppEvent) -> AppResponse {
         use AppEvent::*;
         match e {
@@ -97,7 +105,7 @@ impl AppState {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum AppEvent {
     Noop(),
 }
