@@ -3,15 +3,75 @@ use std::io;
 
 pub mod net;
 
-// might need to _only_ ser/de certain components?
+#[derive(Debug)]
+pub struct State {
+    // persistent state
+    /// latest term server has seen
+    current_term: usize,
+    /// who received my vote, if any
+    voted_for: Option<usize>,
+    log: Vec<LogEntry>,
+    // volatile state
+    #[expect(unused)]
+    state: AppState,
+    /// highest committed entry
+    #[expect(unused)]
+    commit_index: usize,
+    /// highest applied entry
+    #[expect(unused)]
+    last_applied: usize,
+    /// who am i?
+    #[expect(unused)]
+    t: Type,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
-pub struct State {}
+struct LogEntry {
+    /// when seen by leader
+    term: usize,
+    cmd: AppEvent,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+enum Type {
+    Follower(),
+    Candidate(),
+    Leader {
+        /// for each host h, next_index[h] is the index of the next log entry to send h
+        next_index: Vec<usize>,
+        /// for each host h, match_index[h] is the highest index known to be replicated on h
+        match_index: Vec<usize>,
+    },
+}
 
 impl State {
+    pub fn new() -> Self {
+        Self {
+            current_term: 0,
+            voted_for: None,
+            // a dummy entry at 0: supports 1-based indexing as in the paper.
+            // *term does not matter here*
+            log: vec![LogEntry {
+                term: 0,
+                cmd: AppEvent::Noop(),
+            }],
+            state: AppState {},
+            commit_index: 0,
+            last_applied: 0,
+            t: Type::Follower(),
+        }
+    }
+
     pub fn next<S: Snapshotter>(&mut self, #[expect(unused)] s: &mut S, e: Event) -> Response {
         #[expect(unused)]
         use Event::*;
         match e {}
+    }
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -21,6 +81,31 @@ pub enum Response {}
 /// Some events are `crate::net::Request`s, but not all!
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Event {}
+
+// App
+
+#[derive(Default, Debug)]
+pub struct AppState {}
+
+impl AppState {
+    #[expect(unused)]
+    fn next(&mut self, e: AppEvent) -> AppResponse {
+        use AppEvent::*;
+        match e {
+            Noop() => todo!(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum AppEvent {
+    Noop(),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum AppResponse {}
+
+// Abstractions
 
 pub trait Snapshotter {
     fn write<P, C>(&mut self, path: P, contents: C) -> io::Result<()>

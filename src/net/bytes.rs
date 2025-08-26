@@ -2,11 +2,21 @@ use crate::{net::*, *};
 
 impl State {
     pub fn to_bytes(&self) -> Vec<u8> {
-        serde_lexpr::to_vec(self).expect("serialization error")
+        let mut buf = vec![];
+        serde_lexpr::to_writer(&mut buf, &(self.current_term, self.voted_for, &self.log))
+            .expect("serialization error");
+        buf
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, ParseError> {
-        serde_lexpr::from_slice(bytes).map_err(Into::into)
+        let (term, vote, log) = serde_lexpr::from_slice(bytes)?;
+        let mut s = Self::new();
+        s.current_term = term;
+        s.voted_for = vote;
+        s.log = log;
+        // We might consider applying the log and updating last_applied, but we don't know what
+        // commit_index is yet!
+        Ok(s)
     }
 }
 
