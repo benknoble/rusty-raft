@@ -4,7 +4,7 @@ use std::io::{self, prelude::*};
 use std::net;
 
 pub mod bytes;
-mod config;
+pub mod config;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Request {}

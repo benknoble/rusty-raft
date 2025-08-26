@@ -1,4 +1,6 @@
-pub const HOSTS: [&str; 5] = [
+pub const COUNT: usize = 5;
+
+pub const HOSTS: [&str; COUNT] = [
     "localhost:9001",
     "localhost:9002",
     "localhost:9003",

@@ -3,6 +3,10 @@ use std::io;
 
 pub mod net;
 
+fn has_majority(count: usize) -> bool {
+    count > net::config::COUNT / 2
+}
+
 #[derive(Debug)]
 pub struct State {
     // persistent state
@@ -75,10 +79,30 @@ impl State {
                 Response::Ok()
             }
             ElectionTimeout() => self.become_candidate(),
+            VoteResponse { term, vote_granted } => {
+                if term > self.current_term {
+                    self.become_follower();
+                    self.current_term = term;
+                    return Response::Ok();
+                }
+                use Type::*;
+                match self.t {
+                    Candidate { votes } => {
+                        let new_votes = votes + if vote_granted { 1 } else { 0 };
+                        self.t = Candidate { votes: new_votes };
+                        if has_majority(new_votes) {
+                            self.become_leader()
+                        } else {
+                            Response::Ok()
+                        }
+                    }
+                    // maybe we've converted since the request went out; ignore it
+                    _ => Response::Ok(),
+                }
+            }
         }
     }
 
-    #[expect(unused)]
     fn become_follower(&mut self) {
         self.t = Type::Follower();
     }
@@ -95,7 +119,23 @@ impl State {
             // even with 1-indexing on the protocol, our highest index is len()-1 because our
             // log is still 0-indexed.
             last_log_index: self.log.len() - 1,
+            // TODO: might be empty!
             last_log_term: self.log[self.log.len() - 1].term,
+        }
+    }
+
+    fn become_leader(&mut self) -> Response {
+        self.t = Type::Leader {
+            next_index: vec![self.log.len(); net::config::COUNT],
+            match_index: vec![0; net::config::COUNT],
+        };
+        Response::Heartbeat {
+            term: self.current_term,
+            id: self.id,
+            // TODO: may be negative!
+            prev_log_index: self.log.len() - 1,
+            prev_log_term: self.log.last().map(|e| e.term).unwrap_or(0),
+            commit: self.commit_index,
         }
     }
 }
@@ -110,6 +150,14 @@ pub enum Response {
         last_log_index: usize,
         last_log_term: usize,
     },
+    /// enough details to make a slim AppendEntries RPC
+    Heartbeat {
+        term: usize,
+        id: usize,
+        prev_log_index: usize,
+        prev_log_term: usize,
+        commit: usize,
+    },
 }
 
 /// Some events are `crate::net::Request`s, but not all!
@@ -117,6 +165,7 @@ pub enum Response {
 pub enum Event {
     ApplyEntries(),
     ElectionTimeout(),
+    VoteResponse { term: usize, vote_granted: bool },
 }
 
 // App
