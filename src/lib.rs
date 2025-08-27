@@ -77,6 +77,7 @@ impl State {
                 #[expect(unreachable_code)]
                 while self.commit_index > self.last_applied {
                     self.last_applied += 1;
+                    // TODO: do something with this response for clients (only if leader…)
                     self.state.next(self.log[self.last_applied].cmd.clone());
                 }
                 Response::Ok()
