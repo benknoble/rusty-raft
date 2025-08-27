@@ -2,7 +2,7 @@ use crate::*;
 use std::collections::HashMap;
 
 #[derive(Debug, Default)]
-struct Snapshot {
+pub struct Snapshot {
     snaps: HashMap<std::path::PathBuf, Vec<u8>>,
 }
 
