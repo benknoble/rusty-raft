@@ -35,7 +35,6 @@ struct LogEntry {
 }
 
 impl LogEntry {
-    #[expect(unused)]
     fn new(term: usize, cmd: AppEvent) -> Self {
         Self { term, cmd }
     }
@@ -62,10 +61,7 @@ impl State {
             voted_for: None,
             // a dummy entry at 0: supports 1-based indexing as in the paper.
             // *term needs to be 0:* empty log cases grab this term.
-            log: vec![LogEntry {
-                term: 0,
-                cmd: AppEvent::Noop(),
-            }],
+            log: vec![LogEntry::new(0, AppEvent::Noop())],
             state: AppState {},
             commit_index: 0,
             last_applied: 0,
