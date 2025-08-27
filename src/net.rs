@@ -7,7 +7,49 @@ pub mod bytes;
 pub mod config;
 
 #[derive(Debug, Deserialize, Serialize)]
-pub enum Request {}
+pub enum Request {
+    AppendEntriesRequest(super::AppendEntries),
+    AppendEntriesResponse(super::AppendEntriesResponse),
+}
+
+impl From<Request> for Event {
+    fn from(r: Request) -> Self {
+        match r {
+            Request::AppendEntriesRequest(inner) => Event::AppendEntriesRequest(inner),
+            Request::AppendEntriesResponse(inner) => Event::AppendEntriesResponse(inner),
+        }
+    }
+}
+
+impl AppendEntries {
+    fn to_request(&self) -> Request {
+        Request::AppendEntriesRequest(self.clone())
+    }
+}
+
+impl From<AppendEntries> for Request {
+    fn from(a: AppendEntries) -> Self {
+        a.to_request()
+    }
+}
+
+impl From<&AppendEntries> for Request {
+    fn from(a: &AppendEntries) -> Self {
+        a.to_request()
+    }
+}
+
+impl AppendEntriesResponse {
+    fn into_request(self) -> Request {
+        Request::AppendEntriesResponse(self)
+    }
+}
+
+impl From<AppendEntriesResponse> for Request {
+    fn from(a: AppendEntriesResponse) -> Self {
+        a.into_request()
+    }
+}
 
 pub trait Networkable {
     fn send_request(&self, req: Request) -> Result<(), io::Error>;
