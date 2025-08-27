@@ -171,12 +171,13 @@ impl State {
                             Response::Ok()
                         } else {
                             next_index[rep.from] -= 1;
+                            let prev_index = next_index[rep.from] - 1;
                             Response::AppendEntriesRequests(vec![AppendEntries {
                                 to: rep.from,
                                 term: self.current_term,
                                 leader_id: self.id,
-                                prev_log_index: next_index[rep.from],
-                                prev_log_term: self.log[next_index[rep.from]].term,
+                                prev_log_index: prev_index,
+                                prev_log_term: self.log[prev_index].term,
                                 commit: self.commit_index,
                                 entries: vec![],
                             }])

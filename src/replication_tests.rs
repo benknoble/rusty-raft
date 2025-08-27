@@ -52,6 +52,10 @@ fn test_2_servers_manual() {
     for _ in 1..=3 {
         s1.next(&mut sn, Event::ClientCmd(AppEvent::Noop()));
     }
+    assert_eq!(
+        s1.debug_log(),
+        "[(0, Noop), (0, Noop), (0, Noop), (0, Noop)]"
+    );
     // new term: s1 is leader again
     s1.become_candidate();
     // skip simulated voting…
@@ -75,8 +79,70 @@ fn test_2_servers_manual() {
         return assert!(false, "don't know how to process the response");
     };
     assert_eq!(s1.debug_leader(), "[5, 4, 5, 5, 5], [0, 0, 0, 0, 0]");
-    // TODO: try again
-    let _req = find_req(1, reqs);
+
+    // try again
+    let req = find_req(1, reqs);
+    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Request::from(req).into())
+    else {
+        return assert!(false, "don't know how to process the response");
+    };
+    // fail! still missing entries
+    assert!(!rep.success);
+    // handle failure
+    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Request::from(rep).into())
+    else {
+        return assert!(false, "don't know how to process the response");
+    };
+    assert_eq!(s1.debug_leader(), "[5, 3, 5, 5, 5], [0, 0, 0, 0, 0]");
+
+    // try again
+    let req = find_req(1, reqs);
+    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Request::from(req).into())
+    else {
+        return assert!(false, "don't know how to process the response");
+    };
+    // fail! still missing entries
+    assert!(!rep.success);
+    assert_eq!(s2.debug_log(), "[(0, Noop)]");
+    // handle failure
+    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Request::from(rep).into())
+    else {
+        return assert!(false, "don't know how to process the response");
+    };
+    assert_eq!(s1.debug_leader(), "[5, 2, 5, 5, 5], [0, 0, 0, 0, 0]");
+
+    // try again
+    let req = find_req(1, reqs);
+    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Request::from(req).into())
+    else {
+        return assert!(false, "don't know how to process the response");
+    };
+    // success!
+    assert!(rep.success);
+    // handle it
+    let Response::Ok() = s1.next(&mut sn, net::Request::from(rep).into()) else {
+        return assert!(false, "don't know how to process the response");
+    };
+    assert_eq!(s1.debug_leader(), "[5, 2, 5, 5, 5], [0, 1, 0, 0, 0]");
+
+    // keep going to get up to speed…
+    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
+        return assert!(false, "don't know how to process the response");
+    };
+    let req = find_req(1, reqs);
+    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Request::from(req).into())
+    else {
+        return assert!(false, "don't know how to process the response");
+    };
+    assert!(rep.success);
+    let Response::Ok() = s1.next(&mut sn, net::Request::from(rep).into()) else {
+        return assert!(false, "don't know how to process the response");
+    };
+    assert_eq!(s1.debug_leader(), "[5, 5, 5, 5, 5], [0, 4, 0, 0, 0]");
+    assert_eq!(
+        s2.debug_log(),
+        "[(0, Noop), (0, Noop), (0, Noop), (0, Noop)]"
+    );
 }
 
 // TODO: a version with the "driver loop" that handles events
