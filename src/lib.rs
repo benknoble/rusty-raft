@@ -94,6 +94,10 @@ impl State {
                     self.become_follower(term);
                     return Response::Ok();
                 }
+                if term != self.current_term {
+                    // drop response
+                    return Response::Ok();
+                }
                 use Type::*;
                 match self.t {
                     Candidate { votes } => {
