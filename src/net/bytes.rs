@@ -99,7 +99,7 @@ where
     }
 }
 
-impl Response {
+impl Output {
     pub fn to_bytes(&self) -> Vec<u8> {
         serde_lexpr::to_vec(self).expect("serialization error")
     }

@@ -71,22 +71,22 @@ impl State {
         }
     }
 
-    pub fn next<S: Snapshotter>(&mut self, #[expect(unused)] s: &mut S, e: Event) -> Response {
+    pub fn next<S: Snapshotter>(&mut self, #[expect(unused)] s: &mut S, e: Event) -> Output {
         match e {
             Event::ApplyEntries() => {
                 #[expect(unreachable_code)]
                 while self.commit_index > self.last_applied {
                     self.last_applied += 1;
-                    // TODO: do something with this response for clients (only if leader…)
+                    // TODO: do something with this output for clients (only if leader…)
                     self.state.next(self.log[self.last_applied].cmd.clone());
                 }
-                Response::Ok()
+                Output::Ok()
             }
             Event::ElectionTimeout() => {
                 use Type::*;
                 match self.t {
                     // maybe we've converted before the most recent timeout; ignore it
-                    Leader { .. } => Response::Ok(),
+                    Leader { .. } => Output::Ok(),
                     _ => self.become_candidate(),
                 }
             }
@@ -97,11 +97,11 @@ impl State {
             } => {
                 if term > self.current_term {
                     self.become_follower(term);
-                    return Response::Ok();
+                    return Output::Ok();
                 }
                 if term != self.current_term {
                     // drop response
-                    return Response::Ok();
+                    return Output::Ok();
                 }
                 use Type::*;
                 match &mut self.t {
@@ -117,15 +117,15 @@ impl State {
                         if has_majority(voters.len()) {
                             self.become_leader()
                         } else {
-                            Response::Ok()
+                            Output::Ok()
                         }
                     }
                     // maybe we've converted since the request went out; ignore it
-                    _ => Response::Ok(),
+                    _ => Output::Ok(),
                 }
             }
             Event::ClientCmd(app_event) => {
-                /* This actually generates a "client waiting on commit for entry i" response.
+                /* This actually generates a "client waiting on commit for entry i" output.
                  *
                  * In the meantime, somebody else is (periodically) checking for entries that need
                  * replicated. That can delay responses, though, so it's on a short timeout. Once
@@ -144,22 +144,22 @@ impl State {
                 match self.t {
                     Leader { .. } => {
                         self.log.push(LogEntry::new(self.current_term, app_event));
-                        Response::ClientWaitFor(self.last_index())
+                        Output::ClientWaitFor(self.last_index())
                     }
                     _ => todo!("should forward leader id (needs more state)"),
                 }
             }
             Event::AppendEntriesRequest(req) => {
-                Response::AppendEntriesResponse(self.append_entries(req))
+                Output::AppendEntriesResponse(self.append_entries(req))
             }
             Event::AppendEntriesResponse(rep) => {
                 assert!(rep.to == self.id);
                 if rep.term > self.current_term {
                     self.become_follower(rep.term);
-                    return Response::Ok();
+                    return Output::Ok();
                 }
                 if rep.term != self.current_term {
-                    return Response::Ok();
+                    return Output::Ok();
                 }
                 match &mut self.t {
                     Type::Leader {
@@ -169,11 +169,11 @@ impl State {
                         if rep.success {
                             next_index[rep.from] = rep.match_index + 1;
                             match_index[rep.from] = rep.match_index;
-                            Response::Ok()
+                            Output::Ok()
                         } else {
                             next_index[rep.from] -= 1;
                             let prev_index = next_index[rep.from] - 1;
-                            Response::AppendEntriesRequests(vec![AppendEntries {
+                            Output::AppendEntriesRequests(vec![AppendEntries {
                                 to: rep.from,
                                 term: self.current_term,
                                 leader_id: self.id,
@@ -185,7 +185,7 @@ impl State {
                         }
                     }
                     // drop it: we are no longer the leader
-                    _ => Response::Ok(),
+                    _ => Output::Ok(),
                 }
             }
             Event::CheckFollowers() => self.check_followers(),
@@ -199,7 +199,7 @@ impl State {
         self.voted_for = None;
     }
 
-    fn become_candidate(&mut self) -> Response {
+    fn become_candidate(&mut self) -> Output {
         self.current_term += 1;
         self.voted_for = Some(self.id);
         self.t = Type::Candidate {
@@ -207,7 +207,7 @@ impl State {
         };
         // who sends out the RPCs? if we had a Vec<Networkable>, we could, but we would also need
         // some form of (fake?) parallelism
-        Response::StartElection {
+        Output::StartElection {
             term: self.current_term,
             candidate_id: self.id,
             last_log_index: self.last_index(),
@@ -215,12 +215,12 @@ impl State {
         }
     }
 
-    fn become_leader(&mut self) -> Response {
+    fn become_leader(&mut self) -> Output {
         self.t = Type::Leader {
             next_index: vec![self.last_index() + 1; net::config::COUNT],
             match_index: vec![0; net::config::COUNT],
         };
-        Response::Heartbeat(
+        Output::Heartbeat(
             net::config::ids()
                 .map(|i| AppendEntries {
                     to: i,
@@ -235,10 +235,10 @@ impl State {
         )
     }
 
-    fn check_followers(&self) -> Response {
+    fn check_followers(&self) -> Output {
         use Type::*;
         match &self.t {
-            Leader { next_index, .. } => Response::AppendEntriesRequests(
+            Leader { next_index, .. } => Output::AppendEntriesRequests(
                 net::config::ids()
                     .filter(|&i| i != self.id)
                     .map(|i| {
@@ -262,7 +262,7 @@ impl State {
                     .collect(),
             ),
             // drop it: we're no longer leader
-            _ => Response::Ok(),
+            _ => Output::Ok(),
         }
     }
 
@@ -358,7 +358,7 @@ impl State {
 }
 
 #[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub enum Response {
+pub enum Output {
     Ok(),
     /// enough details to make a RequestVote RPC
     StartElection {
@@ -437,7 +437,7 @@ impl AppendEntriesResponse {
 pub struct AppState {}
 
 impl AppState {
-    fn next(&mut self, e: AppEvent) -> AppResponse {
+    fn next(&mut self, e: AppEvent) -> AppOutput {
         use AppEvent::*;
         match e {
             Noop() => todo!(),
@@ -451,7 +451,7 @@ pub enum AppEvent {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub enum AppResponse {}
+pub enum AppOutput {}
 
 // Abstractions
 

@@ -18,8 +18,8 @@ fn test_2_servers_manual() {
     let mut s1 = State::new(0);
     let mut s2 = State::new(1);
 
-    let Response::Heartbeat(reqs) = s1.become_leader() else {
-        return assert!(false, "don't know how to process the response");
+    let Output::Heartbeat(reqs) = s1.become_leader() else {
+        return assert!(false, "don't know how to process the output");
     };
     let req = find_req(1, reqs);
     let ae: net::Message = req.into();
@@ -28,22 +28,22 @@ fn test_2_servers_manual() {
     assert_eq!(s2.debug_log(), "[]");
     assert_eq!(s1.debug_leader(), "[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]");
 
-    let Response::ClientWaitFor(idx) = s1.next(&mut sn, Event::ClientCmd(AppEvent::Noop())) else {
-        return assert!(false, "don't know how to process the response");
+    let Output::ClientWaitFor(idx) = s1.next(&mut sn, Event::ClientCmd(AppEvent::Noop())) else {
+        return assert!(false, "don't know how to process the output");
     };
     assert_eq!(idx, 1);
-    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
-        return assert!(false, "don't know how to process the response");
+    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
+        return assert!(false, "don't know how to process the output");
     };
     let req = find_req(1, reqs);
-    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
+    let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
-        return assert!(false, "don't know how to process the response");
+        return assert!(false, "don't know how to process the output");
     };
     assert!(rep.success);
     assert_eq!(s2.debug_log(), "[(0, Noop)]");
-    let Response::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
-        return assert!(false, "don't know how to process the response");
+    let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
+        return assert!(false, "don't know how to process the output");
     };
     assert_eq!(s1.debug_leader(), "[1, 2, 1, 1, 1], [0, 1, 0, 0, 0]");
 
@@ -63,80 +63,80 @@ fn test_2_servers_manual() {
     assert_eq!(s1.debug_leader(), "[5, 5, 5, 5, 5], [0, 0, 0, 0, 0]");
 
     // send heartbeats
-    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
-        return assert!(false, "don't know how to process the response");
+    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
+        return assert!(false, "don't know how to process the output");
     };
     let req = find_req(1, reqs);
-    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
+    let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
-        return assert!(false, "don't know how to process the response");
+        return assert!(false, "don't know how to process the output");
     };
     // fail! missing entries
     assert!(!rep.success);
     // handle failure
-    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Message::from(rep).into())
+    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Message::from(rep).into())
     else {
-        return assert!(false, "don't know how to process the response");
+        return assert!(false, "don't know how to process the output");
     };
     assert_eq!(s1.debug_leader(), "[5, 4, 5, 5, 5], [0, 0, 0, 0, 0]");
 
     // try again
     let req = find_req(1, reqs);
-    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
+    let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
-        return assert!(false, "don't know how to process the response");
+        return assert!(false, "don't know how to process the output");
     };
     // fail! still missing entries
     assert!(!rep.success);
     // handle failure
-    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Message::from(rep).into())
+    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Message::from(rep).into())
     else {
-        return assert!(false, "don't know how to process the response");
+        return assert!(false, "don't know how to process the output");
     };
     assert_eq!(s1.debug_leader(), "[5, 3, 5, 5, 5], [0, 0, 0, 0, 0]");
 
     // try again
     let req = find_req(1, reqs);
-    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
+    let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
-        return assert!(false, "don't know how to process the response");
+        return assert!(false, "don't know how to process the output");
     };
     // fail! still missing entries
     assert!(!rep.success);
     assert_eq!(s2.debug_log(), "[(0, Noop)]");
     // handle failure
-    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Message::from(rep).into())
+    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Message::from(rep).into())
     else {
-        return assert!(false, "don't know how to process the response");
+        return assert!(false, "don't know how to process the output");
     };
     assert_eq!(s1.debug_leader(), "[5, 2, 5, 5, 5], [0, 0, 0, 0, 0]");
 
     // try again
     let req = find_req(1, reqs);
-    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
+    let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
-        return assert!(false, "don't know how to process the response");
+        return assert!(false, "don't know how to process the output");
     };
     // success!
     assert!(rep.success);
     // handle it
-    let Response::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
-        return assert!(false, "don't know how to process the response");
+    let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
+        return assert!(false, "don't know how to process the output");
     };
     assert_eq!(s1.debug_leader(), "[5, 2, 5, 5, 5], [0, 1, 0, 0, 0]");
 
     // keep going to get up to speed…
-    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
-        return assert!(false, "don't know how to process the response");
+    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
+        return assert!(false, "don't know how to process the output");
     };
     let req = find_req(1, reqs);
-    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
+    let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
-        return assert!(false, "don't know how to process the response");
+        return assert!(false, "don't know how to process the output");
     };
     assert!(rep.success);
-    let Response::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
-        return assert!(false, "don't know how to process the response");
+    let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
+        return assert!(false, "don't know how to process the output");
     };
     assert_eq!(s1.debug_leader(), "[5, 5, 5, 5, 5], [0, 4, 0, 0, 0]");
     assert_eq!(
@@ -177,10 +177,10 @@ fn test_many_auto() {
         use Cont::*;
 
         let mut handle_event = |e: Event| match s.next(&mut sn, e) {
-            Response::Ok() => None,
-            Response::StartElection { .. } => unimplemented!("not needed in this test"),
-            Response::ClientWaitFor(_) => Some(Event::CheckFollowers()),
-            Response::Heartbeat(reqs) | Response::AppendEntriesRequests(reqs) => {
+            Output::Ok() => None,
+            Output::StartElection { .. } => unimplemented!("not needed in this test"),
+            Output::ClientWaitFor(_) => Some(Event::CheckFollowers()),
+            Output::Heartbeat(reqs) | Output::AppendEntriesRequests(reqs) => {
                 for req in reqs {
                     if tx.send(req.into()).is_err() {
                         return Abort;
@@ -188,7 +188,7 @@ fn test_many_auto() {
                 }
                 None
             }
-            Response::AppendEntriesResponse(rep) => {
+            Output::AppendEntriesResponse(rep) => {
                 if tx.send(rep.into()).is_err() {
                     Abort
                 } else {
