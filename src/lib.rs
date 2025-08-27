@@ -270,6 +270,9 @@ impl State {
     }
 
     fn append_entries(&mut self, r: AppendEntries) -> AppendEntriesResponse {
+        if r.term > self.current_term {
+            self.become_follower(r.term);
+        }
         // TODO: save state before responding
         macro_rules! fail {
             () => {
