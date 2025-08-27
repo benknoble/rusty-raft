@@ -123,15 +123,39 @@ impl State {
                     _ => Response::Ok(),
                 }
             }
-            #[expect(unused)]
             Event::ClientCmd(app_event) => {
-                todo!()
+                /* This actually generates a "client waiting on commit for entry i" response.
+                 *
+                 * In the meantime, somebody else is (periodically) checking for entries that need
+                 * replicated. That can delay responses, though, so it's on a short timeout. Once
+                 * it sees a new entry, it should quickly queue an event to send that entry out.
+                 * Can this be the _same_ as the heartbeat mechanism? TODO
+                 * Heartbeat loop per follower:
+                 *      - hey, time to fire off an AE again!
+                 *      - might be empty, might not
+                 *      - reset timer if we send any out early, such as when we see a new command
+                 *
+                 * However, we know nobody has seen this entry… so when we get a "waiting on
+                 * commit," we automatically queue up AppendEntries for all hosts. It's the driver
+                 * loop's job to do so.
+                 */
+                use Type::*;
+                match self.t {
+                    Leader { .. } => {
+                        self.log.push(LogEntry::new(self.current_term, app_event));
+                        Response::ClientWaitFor(self.last_index())
+                    }
+                    _ => todo!("should forward leader id (needs more state)"),
+                }
             }
             Event::AppendEntriesRequest(req) => {
                 Response::AppendEntriesResponse(self.append_entries(req))
             }
             #[expect(unused)]
             Event::AppendEntriesResponse(rep) => {
+                todo!()
+            }
+            Event::CheckFollowers() => {
                 todo!()
             }
         }
@@ -268,6 +292,7 @@ pub enum Response {
         last_log_index: usize,
         last_log_term: usize,
     },
+    ClientWaitFor(usize),
     Heartbeat(AppendEntries),
     AppendEntriesRequest(AppendEntries),
     AppendEntriesResponse(AppendEntriesResponse),
@@ -278,6 +303,7 @@ pub enum Response {
 pub enum Event {
     ApplyEntries(),
     ElectionTimeout(),
+    CheckFollowers(),
     AppendEntriesRequest(AppendEntries),
     AppendEntriesResponse(AppendEntriesResponse),
     VoteResponse {
