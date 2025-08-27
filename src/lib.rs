@@ -123,6 +123,17 @@ impl State {
                     _ => Response::Ok(),
                 }
             }
+            #[expect(unused)]
+            Event::ClientCmd(app_event) => {
+                todo!()
+            }
+            Event::AppendEntriesRequest(req) => {
+                Response::AppendEntriesResponse(self.append_entries(req))
+            }
+            #[expect(unused)]
+            Event::AppendEntriesResponse(rep) => {
+                todo!()
+            }
         }
     }
 
@@ -178,7 +189,6 @@ impl State {
         &self.log[self.last_index()]
     }
 
-    #[expect(unused)]
     fn append_entries(&mut self, r: AppendEntries) -> AppendEntriesResponse {
         macro_rules! fail {
             () => {
@@ -239,6 +249,8 @@ pub enum Response {
         last_log_term: usize,
     },
     Heartbeat(AppendEntries),
+    AppendEntriesRequest(AppendEntries),
+    AppendEntriesResponse(AppendEntriesResponse),
 }
 
 /// Some events are `crate::net::Request`s, but not all!
@@ -246,11 +258,14 @@ pub enum Response {
 pub enum Event {
     ApplyEntries(),
     ElectionTimeout(),
+    AppendEntriesRequest(AppendEntries),
+    AppendEntriesResponse(AppendEntriesResponse),
     VoteResponse {
         from: usize,
         term: usize,
         vote_granted: bool,
     },
+    ClientCmd(AppEvent),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
