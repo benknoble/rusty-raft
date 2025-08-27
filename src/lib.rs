@@ -128,8 +128,6 @@ impl State {
         Response::StartElection {
             term: self.current_term,
             candidate_id: self.id,
-            // even with 1-indexing on the protocol, our highest index is len()-1 because our
-            // log is still 0-indexed.
             last_log_index: self.last_index(),
             last_log_term: self.last_entry().term,
         }
@@ -154,6 +152,8 @@ impl State {
     fn last_index(&self) -> usize {
         // Dummy value guarantees we don't underflow the usize: might return 0, though
         assert!(!self.log.is_empty());
+        // even with 1-indexing on the protocol, our highest index is len()-1 because our
+        // log is still 0-indexed.
         self.log.len() - 1
     }
 
