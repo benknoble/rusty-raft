@@ -236,6 +236,26 @@ impl State {
         }
         AppendEntriesResponse::succeed(self.current_term)
     }
+
+    #[cfg(test)]
+    fn debug_log(&self) -> String {
+        let inner: Vec<_> = self.log[1..]
+            .iter()
+            .map(|e| format!("({}, {:?})", e.term, e.cmd))
+            .collect();
+        format!("[{}]", inner.join(", "))
+    }
+
+    #[cfg(test)]
+    fn debug_leader(&self) -> String {
+        match &self.t {
+            Type::Leader {
+                next_index,
+                match_index,
+            } => format!("{next_index:?}, {match_index:?}"),
+            _ => unimplemented!(),
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -268,7 +288,7 @@ pub enum Event {
     ClientCmd(AppEvent),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AppendEntries {
     term: usize,
     leader_id: usize,
@@ -278,7 +298,7 @@ pub struct AppendEntries {
     entries: Vec<LogEntry>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AppendEntriesResponse {
     term: usize,
     success: bool,
@@ -335,5 +355,7 @@ pub trait Snapshotter {
 
 #[cfg(test)]
 mod append_entries_test;
+#[cfg(test)]
+mod replication_tests;
 #[cfg(test)]
 mod save_restore_tests;
