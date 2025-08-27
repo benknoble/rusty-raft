@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::io;
 
 pub mod net;
@@ -45,6 +46,7 @@ enum Type {
     Follower(),
     Candidate {
         votes: usize,
+        voters: HashSet<usize>,
     },
     Leader {
         /// for each host h, next_index[h] is the index of the next log entry to send h
@@ -89,7 +91,11 @@ impl State {
                     _ => self.become_candidate(),
                 }
             }
-            VoteResponse { term, vote_granted } => {
+            VoteResponse {
+                from,
+                term,
+                vote_granted,
+            } => {
                 if term > self.current_term {
                     self.become_follower(term);
                     return Response::Ok();
@@ -99,11 +105,18 @@ impl State {
                     return Response::Ok();
                 }
                 use Type::*;
-                match self.t {
-                    Candidate { votes } => {
-                        let new_votes = votes + if vote_granted { 1 } else { 0 };
-                        self.t = Candidate { votes: new_votes };
-                        if has_majority(new_votes) {
+                match &mut self.t {
+                    Candidate { votes, voters } => {
+                        *votes += if vote_granted { 1 } else { 0 };
+                        if vote_granted {
+                            assert!(
+                                voters.replace(from).is_none(),
+                                "voter {} voted more than once for {} this term",
+                                from,
+                                self.id
+                            );
+                        }
+                        if has_majority(*votes) {
                             self.become_leader()
                         } else {
                             Response::Ok()
@@ -126,7 +139,10 @@ impl State {
     fn become_candidate(&mut self) -> Response {
         self.current_term += 1;
         self.voted_for = Some(self.id);
-        self.t = Type::Candidate { votes: 1 };
+        self.t = Type::Candidate {
+            votes: 1,
+            voters: HashSet::new(),
+        };
         // who sends out the RPCs? if we had a Vec<Networkable>, we could, but we would also need
         // some form of (fake?) parallelism
         Response::StartElection {
@@ -240,7 +256,11 @@ pub enum Response {
 pub enum Event {
     ApplyEntries(),
     ElectionTimeout(),
-    VoteResponse { term: usize, vote_granted: bool },
+    VoteResponse {
+        from: usize,
+        term: usize,
+        vote_granted: bool,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize)]
