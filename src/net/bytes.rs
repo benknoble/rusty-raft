@@ -1,4 +1,4 @@
-use crate::{net::*, *};
+use crate::net::*;
 
 impl State {
     pub fn to_bytes(&self) -> Vec<u8> {
