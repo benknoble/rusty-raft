@@ -190,6 +190,7 @@ impl State {
             match_index: vec![0; net::config::COUNT],
         };
         Response::Heartbeat(AppendEntries {
+            to: 0, // blank value: driver needs to update it
             term: self.current_term,
             leader_id: self.id,
             prev_log_index: self.last_index(),
@@ -316,6 +317,7 @@ pub enum Event {
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AppendEntries {
+    to: usize,
     term: usize,
     leader_id: usize,
     prev_log_index: usize,

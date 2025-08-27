@@ -27,6 +27,7 @@ fn test_append_entries() {
     s.current_term = 3;
     // "normal" heartbeat append
     assert_success(s.append_entries(AppendEntries {
+        to: 0,
         term: 3,
         leader_id: 1,
         prev_log_index: 6,
@@ -38,6 +39,7 @@ fn test_append_entries() {
 
     // "normal" actual append
     assert_success(s.append_entries(AppendEntries {
+        to: 0,
         term: 3,
         leader_id: 1,
         prev_log_index: 6,
@@ -53,6 +55,7 @@ fn test_append_entries() {
 
     // "overwrite" append
     assert_success(s.append_entries(AppendEntries {
+        to: 0,
         term: 4, // this term increased: new leader
         leader_id: 1,
         prev_log_index: 4,
@@ -69,6 +72,7 @@ fn test_append_entries() {
 
     // out of order heartbeat
     assert_success(s.append_entries(AppendEntries {
+        to: 0,
         term: 4, // this term increased: new leader
         leader_id: 1,
         prev_log_index: 4,
@@ -84,6 +88,7 @@ fn test_append_entries() {
 
     // old leader
     assert_fail(s.append_entries(AppendEntries {
+        to: 0,
         term: 3,
         leader_id: 1,
         prev_log_index: 5,
@@ -94,6 +99,7 @@ fn test_append_entries() {
 
     // disagreement about old state
     assert_fail(s.append_entries(AppendEntries {
+        to: 0,
         term: 4,
         leader_id: 1,
         prev_log_index: 5,
