@@ -7,68 +7,67 @@ pub mod bytes;
 pub mod config;
 
 #[derive(Debug, Deserialize, Serialize)]
-pub enum Request {
+pub enum Message {
     AppendEntriesRequest(super::AppendEntries),
     AppendEntriesResponse(super::AppendEntriesResponse),
 }
 
-impl Request {
+impl Message {
     pub fn to(&self) -> usize {
         match self {
-            Request::AppendEntriesRequest(r) => r.to,
-            Request::AppendEntriesResponse(r) => r.to,
+            Message::AppendEntriesRequest(r) => r.to,
+            Message::AppendEntriesResponse(r) => r.to,
         }
     }
 }
 
-impl From<Request> for Event {
-    fn from(r: Request) -> Self {
+impl From<Message> for Event {
+    fn from(r: Message) -> Self {
         match r {
-            Request::AppendEntriesRequest(inner) => Event::AppendEntriesRequest(inner),
-            Request::AppendEntriesResponse(inner) => Event::AppendEntriesResponse(inner),
+            Message::AppendEntriesRequest(inner) => Event::AppendEntriesRequest(inner),
+            Message::AppendEntriesResponse(inner) => Event::AppendEntriesResponse(inner),
         }
     }
 }
 
 impl AppendEntries {
-    fn to_request(&self) -> Request {
-        Request::AppendEntriesRequest(self.clone())
+    fn to_message(&self) -> Message {
+        Message::AppendEntriesRequest(self.clone())
     }
 }
 
-impl From<AppendEntries> for Request {
+impl From<AppendEntries> for Message {
     fn from(a: AppendEntries) -> Self {
-        a.to_request()
+        a.to_message()
     }
 }
 
-impl From<&AppendEntries> for Request {
+impl From<&AppendEntries> for Message {
     fn from(a: &AppendEntries) -> Self {
-        a.to_request()
+        a.to_message()
     }
 }
 
 impl AppendEntriesResponse {
-    fn into_request(self) -> Request {
-        Request::AppendEntriesResponse(self)
+    fn into_message(self) -> Message {
+        Message::AppendEntriesResponse(self)
     }
 }
 
-impl From<AppendEntriesResponse> for Request {
+impl From<AppendEntriesResponse> for Message {
     fn from(a: AppendEntriesResponse) -> Self {
-        a.into_request()
+        a.into_message()
     }
 }
 
 pub trait Networkable {
-    fn send_request(&self, req: Request) -> Result<(), io::Error>;
-    fn send_reply(&self, resp: Response) -> Result<(), io::Error>;
+    fn send_message(&self, req: Message) -> Result<(), io::Error>;
 }
 
-/// for servers listening to requests
-pub fn request_iter(
+/// for servers listening to messages
+pub fn message_iter(
     stream: &net::TcpStream,
-) -> impl Iterator<Item = Result<Request, bytes::ParseError>> {
+) -> impl Iterator<Item = Result<Message, bytes::ParseError>> {
     let parse = bytes::Parser::from_reader(stream);
     parse.into_iter()
 }
@@ -76,11 +75,7 @@ pub fn request_iter(
 mod tcp {
     use super::*;
 
-    pub fn reply(stream: &mut &net::TcpStream, resp: Response) -> Result<(), io::Error> {
-        stream.write_all(resp.to_bytes().as_slice())
-    }
-
-    pub fn request(stream: &mut &net::TcpStream, req: Request) -> Result<(), io::Error> {
+    pub fn message(stream: &mut &net::TcpStream, req: Message) -> Result<(), io::Error> {
         stream.write_all(req.to_bytes().as_slice())
     }
 }
@@ -104,11 +99,7 @@ impl Host {
 }
 
 impl Networkable for Host {
-    fn send_request(&self, req: Request) -> Result<(), io::Error> {
-        tcp::request(&mut &self.stream, req)
-    }
-
-    fn send_reply(&self, resp: Response) -> Result<(), io::Error> {
-        tcp::reply(&mut &self.stream, resp)
+    fn send_message(&self, req: Message) -> Result<(), io::Error> {
+        tcp::message(&mut &self.stream, req)
     }
 }

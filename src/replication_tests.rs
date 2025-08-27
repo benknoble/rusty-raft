@@ -22,7 +22,7 @@ fn test_2_servers_manual() {
         return assert!(false, "don't know how to process the response");
     };
     let req = find_req(1, reqs);
-    let ae: net::Request = req.into();
+    let ae: net::Message = req.into();
     let ae: Event = ae.into();
     s2.next(&mut sn, ae);
     assert_eq!(s2.debug_log(), "[]");
@@ -36,13 +36,13 @@ fn test_2_servers_manual() {
         return assert!(false, "don't know how to process the response");
     };
     let req = find_req(1, reqs);
-    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Request::from(req).into())
+    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
         return assert!(false, "don't know how to process the response");
     };
     assert!(rep.success);
     assert_eq!(s2.debug_log(), "[(0, Noop)]");
-    let Response::Ok() = s1.next(&mut sn, net::Request::from(rep).into()) else {
+    let Response::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
         return assert!(false, "don't know how to process the response");
     };
     assert_eq!(s1.debug_leader(), "[1, 2, 1, 1, 1], [0, 1, 0, 0, 0]");
@@ -67,14 +67,14 @@ fn test_2_servers_manual() {
         return assert!(false, "don't know how to process the response");
     };
     let req = find_req(1, reqs);
-    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Request::from(req).into())
+    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
         return assert!(false, "don't know how to process the response");
     };
     // fail! missing entries
     assert!(!rep.success);
     // handle failure
-    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Request::from(rep).into())
+    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Message::from(rep).into())
     else {
         return assert!(false, "don't know how to process the response");
     };
@@ -82,14 +82,14 @@ fn test_2_servers_manual() {
 
     // try again
     let req = find_req(1, reqs);
-    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Request::from(req).into())
+    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
         return assert!(false, "don't know how to process the response");
     };
     // fail! still missing entries
     assert!(!rep.success);
     // handle failure
-    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Request::from(rep).into())
+    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Message::from(rep).into())
     else {
         return assert!(false, "don't know how to process the response");
     };
@@ -97,7 +97,7 @@ fn test_2_servers_manual() {
 
     // try again
     let req = find_req(1, reqs);
-    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Request::from(req).into())
+    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
         return assert!(false, "don't know how to process the response");
     };
@@ -105,7 +105,7 @@ fn test_2_servers_manual() {
     assert!(!rep.success);
     assert_eq!(s2.debug_log(), "[(0, Noop)]");
     // handle failure
-    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Request::from(rep).into())
+    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Message::from(rep).into())
     else {
         return assert!(false, "don't know how to process the response");
     };
@@ -113,14 +113,14 @@ fn test_2_servers_manual() {
 
     // try again
     let req = find_req(1, reqs);
-    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Request::from(req).into())
+    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
         return assert!(false, "don't know how to process the response");
     };
     // success!
     assert!(rep.success);
     // handle it
-    let Response::Ok() = s1.next(&mut sn, net::Request::from(rep).into()) else {
+    let Response::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
         return assert!(false, "don't know how to process the response");
     };
     assert_eq!(s1.debug_leader(), "[5, 2, 5, 5, 5], [0, 1, 0, 0, 0]");
@@ -130,12 +130,12 @@ fn test_2_servers_manual() {
         return assert!(false, "don't know how to process the response");
     };
     let req = find_req(1, reqs);
-    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Request::from(req).into())
+    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
         return assert!(false, "don't know how to process the response");
     };
     assert!(rep.success);
-    let Response::Ok() = s1.next(&mut sn, net::Request::from(rep).into()) else {
+    let Response::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
         return assert!(false, "don't know how to process the response");
     };
     assert_eq!(s1.debug_leader(), "[5, 5, 5, 5, 5], [0, 4, 0, 0, 0]");
@@ -163,7 +163,7 @@ fn test_many_auto() {
     fn driver(
         s: &mut State,
         rx: mpsc::Receiver<Event>,
-        tx: mpsc::Sender<net::Request>,
+        tx: mpsc::Sender<net::Message>,
         test_rx: mpsc::Receiver<TestEvent>,
     ) {
         let mut sn: Snapshot = Default::default();
