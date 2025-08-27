@@ -133,7 +133,7 @@ impl State {
                  * Heartbeat loop per follower:
                  *      - hey, time to fire off an AE again!
                  *      - might be empty, might not
-                 *      - reset timer if we send any out early, such as when we see a new command
+                 *      - no need to reset timer: just send more than strictly necessary
                  *
                  * However, we know nobody has seen this entry… so when we get a "waiting on
                  * commit," we automatically queue up AppendEntries for all hosts. It's the driver
@@ -155,9 +155,7 @@ impl State {
             Event::AppendEntriesResponse(rep) => {
                 todo!()
             }
-            Event::CheckFollowers() => {
-                todo!()
-            }
+            Event::CheckFollowers() => self.check_followers(),
         }
     }
 
@@ -202,6 +200,37 @@ impl State {
                 })
                 .collect(),
         )
+    }
+
+    fn check_followers(&self) -> Response {
+        use Type::*;
+        match &self.t {
+            Leader { next_index, .. } => Response::AppendEntriesRequests(
+                net::config::ids()
+                    .filter(|&i| i != self.id)
+                    .map(|i| {
+                        let next_index = next_index[i];
+                        AppendEntries {
+                            to: i,
+                            term: self.current_term,
+                            leader_id: self.id,
+                            prev_log_index: next_index - 1,
+                            prev_log_term: self.log[next_index - 1].term,
+                            commit: self.commit_index,
+                            entries: if self.last_index() >= next_index {
+                                // needs update!
+                                self.log[next_index..].into()
+                            } else {
+                                // heartbeat
+                                vec![]
+                            },
+                        }
+                    })
+                    .collect(),
+            ),
+            // drop it: we're no longer leader
+            _ => Response::Ok(),
+        }
     }
 
     // Log functions
