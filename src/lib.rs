@@ -312,10 +312,13 @@ impl State {
             }
             index_to_insert += 1;
         }
+        // index_to_insert = r.prev_log_index + 1 + r.entries.len(), ∴
+        // match_index     = r.prev_log_index +     r.entries.len(), as desired.
+        let match_index = index_to_insert - 1;
         if r.commit > self.commit_index {
-            self.commit_index = std::cmp::min(r.commit, index_to_insert);
+            self.commit_index = std::cmp::min(r.commit, match_index);
         }
-        AppendEntriesResponse::succeed(self.id, self.current_term, index_to_insert)
+        AppendEntriesResponse::succeed(self.id, self.current_term, match_index)
     }
 
     #[cfg(test)]
