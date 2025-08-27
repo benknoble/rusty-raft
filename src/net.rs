@@ -12,6 +12,15 @@ pub enum Request {
     AppendEntriesResponse(super::AppendEntriesResponse),
 }
 
+impl Request {
+    pub fn to(&self) -> usize {
+        match self {
+            Request::AppendEntriesRequest(r) => r.to,
+            Request::AppendEntriesResponse(r) => r.to,
+        }
+    }
+}
+
 impl From<Request> for Event {
     fn from(r: Request) -> Self {
         match r {

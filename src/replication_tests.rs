@@ -145,4 +145,170 @@ fn test_2_servers_manual() {
     );
 }
 
-// TODO: a version with the "driver loop" that handles events
+#[test]
+fn test_many_auto() {
+    use std::sync::*;
+    use std::thread;
+    use std::time::Duration;
+
+    enum TestEvent {
+        Quit,
+        Pause,
+        Resume,
+        E(Event),
+    }
+
+    let test_wait = Duration::from_millis(250);
+
+    fn driver(
+        s: &mut State,
+        rx: mpsc::Receiver<Event>,
+        tx: mpsc::Sender<net::Request>,
+        test_rx: mpsc::Receiver<TestEvent>,
+    ) {
+        let mut sn: Snapshot = Default::default();
+        let mut go = true;
+
+        enum Cont {
+            None,
+            Some(Event),
+            Abort,
+        }
+        use Cont::*;
+
+        let mut handle_event = |e: Event| match s.next(&mut sn, e) {
+            Response::Ok() => None,
+            Response::StartElection { .. } => unimplemented!("not needed in this test"),
+            Response::ClientWaitFor(_) => Some(Event::CheckFollowers()),
+            Response::Heartbeat(reqs) | Response::AppendEntriesRequests(reqs) => {
+                for req in reqs {
+                    if tx.send(req.into()).is_err() {
+                        return Abort;
+                    }
+                }
+                None
+            }
+            Response::AppendEntriesResponse(rep) => {
+                if tx.send(rep.into()).is_err() {
+                    Abort
+                } else {
+                    None
+                }
+            }
+        };
+
+        let mut rec_event = |e: Event| {
+            let mut e = e;
+            loop {
+                match handle_event(e) {
+                    None => break,
+                    Some(new_e) => e = new_e,
+                    Abort => return Abort,
+                }
+            }
+            None
+        };
+
+        use TestEvent::*;
+        loop {
+            match test_rx.try_recv() {
+                Ok(Quit) => break,
+                Err(mpsc::TryRecvError::Empty) => (),
+                Err(mpsc::TryRecvError::Disconnected) => break,
+                Ok(Pause) => go = false,
+                Ok(Resume) => go = true,
+                Ok(E(e)) => match rec_event(e) {
+                    Abort => break,
+                    None => (),
+                    Some(_) => unimplemented!("recursive error!"),
+                },
+            }
+            if !go {
+                continue;
+            }
+            match rx.try_recv() {
+                Ok(e) => match rec_event(e) {
+                    Abort => break,
+                    None => (),
+                    Some(_) => unimplemented!("recursive error!"),
+                },
+                Err(mpsc::TryRecvError::Empty) => (),
+                Err(mpsc::TryRecvError::Disconnected) => break,
+            }
+        }
+    }
+
+    let mut states: Vec<_> = (0..net::config::COUNT).map(State::new).collect();
+    states[0].become_leader();
+
+    thread::scope(|s| {
+        let (net_tx, net_rx) = mpsc::channel();
+        let mut test_txs = vec![];
+        let mut inboxes = vec![];
+        for state in states.iter_mut() {
+            let (test_tx, test_rx) = mpsc::channel();
+            test_txs.push(test_tx);
+            let (inbox, rx) = mpsc::channel();
+            inboxes.push(inbox);
+            let net_tx = net_tx.clone();
+            s.spawn(|| driver(state, rx, net_tx, test_rx));
+        }
+
+        // network
+        s.spawn(move || {
+            loop {
+                let Ok(r) = net_rx.recv() else {
+                    break;
+                };
+                if inboxes[r.to()].send(r.into()).is_err() {
+                    break;
+                }
+            }
+        });
+
+        // send a few commands
+        for _ in 1..=3 {
+            test_txs[0]
+                .send(TestEvent::E(Event::ClientCmd(AppEvent::Noop())))
+                .expect("sent");
+        }
+
+        // flaky?
+        thread::sleep(test_wait);
+
+        // pause 2, 3
+        test_txs[2].send(TestEvent::Pause).expect("sent");
+        test_txs[3].send(TestEvent::Pause).expect("sent");
+
+        // send a few more commands
+        for _ in 1..=3 {
+            test_txs[0]
+                .send(TestEvent::E(Event::ClientCmd(AppEvent::Noop())))
+                .expect("sent");
+        }
+
+        // flaky?
+        thread::sleep(test_wait);
+
+        // resume 2, 3
+        test_txs[2].send(TestEvent::Resume).expect("sent");
+        test_txs[3].send(TestEvent::Resume).expect("sent");
+
+        // flaky?
+        thread::sleep(test_wait);
+
+        // shutdown
+        for tx in test_txs {
+            tx.send(TestEvent::Quit).expect("sent");
+        }
+    });
+
+    // all 6 messages were delivered
+    assert_eq!(states[0].debug_leader(), "[1, 7, 7, 7, 7], [0, 6, 6, 6, 6]");
+    for state in states {
+        assert_eq!(
+            state.debug_log(),
+            "[(0, Noop), (0, Noop), (0, Noop), (0, Noop), (0, Noop), (0, Noop)]"
+        );
+    }
+}

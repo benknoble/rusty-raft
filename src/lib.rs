@@ -153,6 +153,7 @@ impl State {
                 Response::AppendEntriesResponse(self.append_entries(req))
             }
             Event::AppendEntriesResponse(rep) => {
+                assert!(rep.to == self.id);
                 if rep.term > self.current_term {
                     self.become_follower(rep.term);
                     return Response::Ok();
@@ -280,13 +281,14 @@ impl State {
     }
 
     fn append_entries(&mut self, r: AppendEntries) -> AppendEntriesResponse {
+        assert!(r.to == self.id);
         if r.term > self.current_term {
             self.become_follower(r.term);
         }
         // TODO: save state before responding
         macro_rules! fail {
             () => {
-                return AppendEntriesResponse::fail(self.id, self.current_term, 0)
+                return AppendEntriesResponse::fail(self.id, r.leader_id, self.current_term, 0)
             };
         }
         if r.term < self.current_term {
@@ -331,7 +333,7 @@ impl State {
         if r.commit > self.commit_index {
             self.commit_index = std::cmp::min(r.commit, match_index);
         }
-        AppendEntriesResponse::succeed(self.id, self.current_term, match_index)
+        AppendEntriesResponse::succeed(self.id, r.leader_id, self.current_term, match_index)
     }
 
     #[cfg(test)]
@@ -400,6 +402,7 @@ pub struct AppendEntries {
 
 #[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AppendEntriesResponse {
+    to: usize,
     from: usize,
     match_index: usize,
     term: usize,
@@ -407,18 +410,20 @@ pub struct AppendEntriesResponse {
 }
 
 impl AppendEntriesResponse {
-    fn succeed(id: usize, term: usize, match_index: usize) -> Self {
+    fn succeed(from: usize, to: usize, term: usize, match_index: usize) -> Self {
         Self {
-            from: id,
+            to,
+            from,
             match_index,
             term,
             success: true,
         }
     }
 
-    fn fail(id: usize, term: usize, match_index: usize) -> Self {
+    fn fail(from: usize, to: usize, term: usize, match_index: usize) -> Self {
         Self {
-            from: id,
+            to,
+            from,
             match_index,
             term,
             success: false,
