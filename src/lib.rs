@@ -313,7 +313,7 @@ impl State {
             index_to_insert += 1;
         }
         if r.commit > self.commit_index {
-            self.commit_index = std::cmp::min(r.commit, self.last_index());
+            self.commit_index = std::cmp::min(r.commit, index_to_insert);
         }
         AppendEntriesResponse::succeed(self.id, self.current_term, index_to_insert)
     }
