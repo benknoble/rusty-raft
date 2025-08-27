@@ -266,6 +266,12 @@ fn test_many_auto() {
             }
         });
 
+        // could try to fuzz (ignoring elections):
+        // - send a ClientCmd to test_txs[0]
+        // - sleep for a bit
+        // - pause any non-0
+        // - resume any non-0
+
         // send a few commands
         for _ in 1..=3 {
             test_txs[0]
