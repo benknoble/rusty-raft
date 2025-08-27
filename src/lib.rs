@@ -72,9 +72,8 @@ impl State {
     }
 
     pub fn next<S: Snapshotter>(&mut self, #[expect(unused)] s: &mut S, e: Event) -> Response {
-        use Event::*;
         match e {
-            ApplyEntries() => {
+            Event::ApplyEntries() => {
                 #[expect(unreachable_code)]
                 while self.commit_index > self.last_applied {
                     self.last_applied += 1;
@@ -82,7 +81,7 @@ impl State {
                 }
                 Response::Ok()
             }
-            ElectionTimeout() => {
+            Event::ElectionTimeout() => {
                 use Type::*;
                 match self.t {
                     // maybe we've converted before the most recent timeout; ignore it
@@ -90,7 +89,7 @@ impl State {
                     _ => self.become_candidate(),
                 }
             }
-            VoteResponse {
+            Event::VoteResponse {
                 from,
                 term,
                 vote_granted,
