@@ -248,6 +248,7 @@ impl State {
     }
 
     fn append_entries(&mut self, r: AppendEntries) -> AppendEntriesResponse {
+        // TODO: save state before responding
         macro_rules! fail {
             () => {
                 return AppendEntriesResponse::fail(self.current_term)
