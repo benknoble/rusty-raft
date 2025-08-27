@@ -45,7 +45,6 @@ impl LogEntry {
 enum Type {
     Follower(),
     Candidate {
-        votes: usize,
         voters: HashSet<usize>,
     },
     Leader {
@@ -106,8 +105,7 @@ impl State {
                 }
                 use Type::*;
                 match &mut self.t {
-                    Candidate { votes, voters } => {
-                        *votes += if vote_granted { 1 } else { 0 };
+                    Candidate { voters } => {
                         if vote_granted {
                             assert!(
                                 voters.replace(from).is_none(),
@@ -116,7 +114,7 @@ impl State {
                                 self.id
                             );
                         }
-                        if has_majority(*votes) {
+                        if has_majority(voters.len()) {
                             self.become_leader()
                         } else {
                             Response::Ok()
@@ -140,7 +138,6 @@ impl State {
         self.current_term += 1;
         self.voted_for = Some(self.id);
         self.t = Type::Candidate {
-            votes: 1,
             voters: HashSet::new(),
         };
         // who sends out the RPCs? if we had a Vec<Networkable>, we could, but we would also need
