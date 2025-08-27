@@ -152,9 +152,30 @@ impl State {
             Event::AppendEntriesRequest(req) => {
                 Response::AppendEntriesResponse(self.append_entries(req))
             }
-            #[expect(unused)]
             Event::AppendEntriesResponse(rep) => {
-                todo!()
+                if rep.term > self.current_term {
+                    self.become_follower(rep.term);
+                    return Response::Ok();
+                }
+                if rep.term != self.current_term {
+                    return Response::Ok();
+                }
+                match &mut self.t {
+                    Type::Leader {
+                        next_index,
+                        match_index,
+                    } => {
+                        if rep.success {
+                            next_index[rep.from] = rep.match_index + 1;
+                            match_index[rep.from] = rep.match_index;
+                            Response::Ok()
+                        } else {
+                            todo!()
+                        }
+                    }
+                    // drop it: we are no longer the leader
+                    _ => Response::Ok(),
+                }
             }
             Event::CheckFollowers() => self.check_followers(),
         }
@@ -252,7 +273,7 @@ impl State {
         // TODO: save state before responding
         macro_rules! fail {
             () => {
-                return AppendEntriesResponse::fail(self.current_term)
+                return AppendEntriesResponse::fail(self.id, self.current_term, 0)
             };
         }
         if r.term < self.current_term {
@@ -294,7 +315,7 @@ impl State {
         if r.commit > self.commit_index {
             self.commit_index = std::cmp::min(r.commit, self.last_index());
         }
-        AppendEntriesResponse::succeed(self.current_term)
+        AppendEntriesResponse::succeed(self.id, self.current_term, index_to_insert)
     }
 
     #[cfg(test)]
@@ -363,20 +384,26 @@ pub struct AppendEntries {
 
 #[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AppendEntriesResponse {
+    from: usize,
+    match_index: usize,
     term: usize,
     success: bool,
 }
 
 impl AppendEntriesResponse {
-    fn succeed(term: usize) -> Self {
+    fn succeed(id: usize, term: usize, match_index: usize) -> Self {
         Self {
+            from: id,
+            match_index,
             term,
             success: true,
         }
     }
 
-    fn fail(term: usize) -> Self {
+    fn fail(id: usize, term: usize, match_index: usize) -> Self {
         Self {
+            from: id,
+            match_index,
             term,
             success: false,
         }
