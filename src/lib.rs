@@ -154,13 +154,14 @@ impl State {
             next_index: vec![self.last_index() + 1; net::config::COUNT],
             match_index: vec![0; net::config::COUNT],
         };
-        Response::Heartbeat {
+        Response::Heartbeat(AppendEntries {
             term: self.current_term,
-            id: self.id,
+            leader_id: self.id,
             prev_log_index: self.last_index(),
             prev_log_term: self.last_entry().term,
             commit: self.commit_index,
-        }
+            entries: vec![],
+        })
     }
 
     // Log functions
@@ -237,14 +238,7 @@ pub enum Response {
         last_log_index: usize,
         last_log_term: usize,
     },
-    /// enough details to make a slim AppendEntries RPC
-    Heartbeat {
-        term: usize,
-        id: usize,
-        prev_log_index: usize,
-        prev_log_term: usize,
-        commit: usize,
-    },
+    Heartbeat(AppendEntries),
 }
 
 /// Some events are `crate::net::Request`s, but not all!
