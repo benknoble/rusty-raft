@@ -7,3 +7,7 @@ pub const HOSTS: [&str; COUNT] = [
     "localhost:9004",
     "localhost:9005",
 ];
+
+pub fn ids() -> impl Iterator<Item = usize> {
+    0..COUNT
+}

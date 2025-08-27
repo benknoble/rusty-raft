@@ -189,15 +189,19 @@ impl State {
             next_index: vec![self.last_index() + 1; net::config::COUNT],
             match_index: vec![0; net::config::COUNT],
         };
-        Response::Heartbeat(AppendEntries {
-            to: 0, // blank value: driver needs to update it
-            term: self.current_term,
-            leader_id: self.id,
-            prev_log_index: self.last_index(),
-            prev_log_term: self.last_entry().term,
-            commit: self.commit_index,
-            entries: vec![],
-        })
+        Response::Heartbeat(
+            net::config::ids()
+                .map(|i| AppendEntries {
+                    to: i,
+                    term: self.current_term,
+                    leader_id: self.id,
+                    prev_log_index: self.last_index(),
+                    prev_log_term: self.last_entry().term,
+                    commit: self.commit_index,
+                    entries: vec![],
+                })
+                .collect(),
+        )
     }
 
     // Log functions
@@ -294,8 +298,8 @@ pub enum Response {
         last_log_term: usize,
     },
     ClientWaitFor(usize),
-    Heartbeat(AppendEntries),
-    AppendEntriesRequest(AppendEntries),
+    Heartbeat(Vec<AppendEntries>),
+    AppendEntriesRequests(Vec<AppendEntries>),
     AppendEntriesResponse(AppendEntriesResponse),
 }
 
