@@ -170,7 +170,16 @@ impl State {
                             match_index[rep.from] = rep.match_index;
                             Response::Ok()
                         } else {
-                            todo!()
+                            next_index[rep.from] -= 1;
+                            Response::AppendEntriesRequests(vec![AppendEntries {
+                                to: rep.from,
+                                term: self.current_term,
+                                leader_id: self.id,
+                                prev_log_index: next_index[rep.from],
+                                prev_log_term: self.log[next_index[rep.from]].term,
+                                commit: self.commit_index,
+                                entries: vec![],
+                            }])
                         }
                     }
                     // drop it: we are no longer the leader

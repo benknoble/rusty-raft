@@ -47,8 +47,36 @@ fn test_2_servers_manual() {
     };
     assert_eq!(s1.debug_leader(), "[1, 2, 1, 1, 1], [0, 1, 0, 0, 0]");
 
-    // TODO: drop a few messages, observe logs + indices, then send some more messages (good test
-    // of match_index)
+    // drop a few AppendEntries calls: driver loop would normally trigger a CheckFollowers and
+    // handle any results immediately when it gets the ClientWaitFor outputs.
+    for _ in 1..=3 {
+        s1.next(&mut sn, Event::ClientCmd(AppEvent::Noop()));
+    }
+    // new term: s1 is leader again
+    s1.become_candidate();
+    // skip simulated voting…
+    s1.become_leader();
+    assert_eq!(s1.debug_leader(), "[5, 5, 5, 5, 5], [0, 0, 0, 0, 0]");
+
+    // send heartbeats
+    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
+        return assert!(false, "don't know how to process the response");
+    };
+    let req = find_req(1, reqs);
+    let Response::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Request::from(req).into())
+    else {
+        return assert!(false, "don't know how to process the response");
+    };
+    // fail! missing entries
+    assert!(!rep.success);
+    // handle failure
+    let Response::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Request::from(rep).into())
+    else {
+        return assert!(false, "don't know how to process the response");
+    };
+    assert_eq!(s1.debug_leader(), "[5, 4, 5, 5, 5], [0, 0, 0, 0, 0]");
+    // TODO: try again
+    let _req = find_req(1, reqs);
 }
 
 // TODO: a version with the "driver loop" that handles events
