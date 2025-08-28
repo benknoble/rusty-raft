@@ -73,17 +73,7 @@ impl State {
 
     pub fn next<S: Snapshotter>(&mut self, #[expect(unused)] s: &mut S, e: Event) -> Output {
         match e {
-            Event::ApplyEntries() => {
-                #[expect(unreachable_code)]
-                while self.commit_index > self.last_applied {
-                    self.last_applied += 1;
-                    // TODO: do something with this output for clients (only if leader…)
-                    // Reply will need to include the cmd and index: the ClientWaitFor(i) should
-                    // only finally reply success if we executed the expected cmd at i
-                    self.state.next(self.log[self.last_applied].cmd.clone());
-                }
-                Output::Ok()
-            }
+            Event::ApplyEntries() => self.apply_entries(),
             Event::ElectionTimeout() => {
                 use Type::*;
                 match self.t {
@@ -270,6 +260,18 @@ impl State {
             // drop it: we're no longer leader
             _ => Output::Ok(),
         }
+    }
+
+    fn apply_entries(&mut self) -> Output {
+        #[expect(unreachable_code)]
+        while self.commit_index > self.last_applied {
+            self.last_applied += 1;
+            // TODO: do something with this output for clients (only if leader…)
+            // Reply will need to include the cmd and index: the ClientWaitFor(i) should only
+            // finally reply success if we executed the expected cmd at i
+            self.state.next(self.log[self.last_applied].cmd.clone());
+        }
+        Output::Ok()
     }
 
     // Log functions
