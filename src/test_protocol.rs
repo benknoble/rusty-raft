@@ -392,9 +392,7 @@ fn test_commits_with_majority_odd() {
         s
     );
     for state in states {
-        if state.id == 2 || state.id == 3 {
-            assert_eq!(state.debug_log(), "[(0, Noop), (0, Noop), (0, Noop)]");
-        } else {
+        if state.id != 2 && state.id != 3 {
             assert_eq!(
                 state.debug_log(),
                 "[(0, Noop), (0, Noop), (0, Noop), (0, Noop), (0, Noop), (0, Noop)]"
@@ -455,9 +453,7 @@ fn test_commits_with_majority_even() {
         s
     );
     for state in states {
-        if state.id == 2 {
-            assert_eq!(state.debug_log(), "[(0, Noop), (0, Noop), (0, Noop)]");
-        } else {
+        if state.id != 2 {
             assert_eq!(
                 state.debug_log(),
                 "[(0, Noop), (0, Noop), (0, Noop), (0, Noop), (0, Noop), (0, Noop)]"
