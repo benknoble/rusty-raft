@@ -102,6 +102,7 @@ impl State {
         match e {
             Event::ApplyEntries() => self.apply_entries(),
             Event::ElectionTimeout() => self.maybe_start_election(),
+            Event::VoteRequest(req) => Output::VoteResponse(self.vote(req)),
             Event::VoteResponse(rep) => self.receive_vote(rep),
             Event::ClientCmd(app_event) => self.push_cmd(app_event),
             Event::AppendEntriesRequest(req) => {
@@ -204,6 +205,31 @@ impl State {
             // maybe we've converted before the most recent timeout; ignore it
             Type::Leader { .. } => Output::Ok(),
             _ => self.become_candidate(),
+        }
+    }
+
+    fn vote(&mut self, r: VoteRequest) -> VoteResponse {
+        let r = &r;
+        assert!(r.to == self.id);
+        if r.term > self.current_term {
+            self.become_follower(r.term);
+        }
+        if r.term < self.current_term {
+            return VoteResponse::deny(self.id, self.current_term, r);
+        }
+        let check_up_to_date = || match up_to_date(
+            r.last_log_term,
+            r.last_log_index,
+            self.last_entry().term,
+            self.last_index(),
+        ) {
+            cmp::Ordering::Greater | cmp::Ordering::Equal => VoteResponse::grant(self.id, r),
+            _ => VoteResponse::deny(self.id, self.current_term, r),
+        };
+        match self.voted_for {
+            None => check_up_to_date(),
+            Some(x) if x == r.from => check_up_to_date(),
+            _ => VoteResponse::deny(self.id, self.current_term, r),
         }
     }
 
@@ -415,6 +441,7 @@ pub enum Output {
         last_log_index: usize,
         last_log_term: u64,
     },
+    VoteResponse(VoteResponse),
     ClientWaitFor(usize),
     Heartbeat(Vec<AppendEntries>),
     AppendEntriesRequests(Vec<AppendEntries>),
@@ -429,16 +456,46 @@ pub enum Event {
     CheckFollowers(),
     AppendEntriesRequest(AppendEntries),
     AppendEntriesResponse(AppendEntriesResponse),
+    VoteRequest(VoteRequest),
     VoteResponse(VoteResponse),
     ClientCmd(AppEvent),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct VoteRequest {
+    to: usize,
+    from: usize,
+    term: u64,
+    last_log_index: usize,
+    last_log_term: u64,
+}
+
+#[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct VoteResponse {
     to: usize,
     from: usize,
     term: u64,
     vote_granted: bool,
+}
+
+impl VoteResponse {
+    fn grant(from: usize, r: &VoteRequest) -> Self {
+        Self {
+            from,
+            to: r.from,
+            term: r.term,
+            vote_granted: false,
+        }
+    }
+
+    fn deny(from: usize, term: u64, r: &VoteRequest) -> Self {
+        Self {
+            from,
+            to: r.from,
+            term,
+            vote_granted: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
@@ -480,6 +537,16 @@ impl AppendEntriesResponse {
             term,
             success: false,
         }
+    }
+}
+
+/// (t1, i1) .up_to_date. (t2, i2)
+fn up_to_date(term1: u64, index1: usize, term2: u64, index2: usize) -> cmp::Ordering {
+    use cmp::Ordering::*;
+    match term1.cmp(&term2) {
+        Less => Less,
+        Greater => Greater,
+        Equal => index1.cmp(&index2),
     }
 }
 
