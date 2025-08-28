@@ -100,11 +100,7 @@ impl State {
         match e {
             Event::ApplyEntries() => self.apply_entries(),
             Event::ElectionTimeout() => self.maybe_start_election(),
-            Event::VoteResponse {
-                from,
-                term,
-                vote_granted,
-            } => self.receive_vote(from, term, vote_granted),
+            Event::VoteResponse(rep) => self.receive_vote(rep),
             Event::ClientCmd(app_event) => self.push_cmd(app_event),
             Event::AppendEntriesRequest(req) => {
                 Output::AppendEntriesResponse(self.append_entries(req))
@@ -209,10 +205,10 @@ impl State {
         }
     }
 
-    fn receive_vote(&mut self, from: usize, term: u64, vote_granted: bool) -> Output {
-        check_term!(self, term);
-        if vote_granted {
-            self.update_votes(from);
+    fn receive_vote(&mut self, r: VoteResponse) -> Output {
+        check_term!(self, r.term);
+        if r.vote_granted {
+            self.update_votes(r.from);
         }
         if self.has_majority_votes() {
             self.become_leader()
@@ -430,12 +426,15 @@ pub enum Event {
     CheckFollowers(),
     AppendEntriesRequest(AppendEntries),
     AppendEntriesResponse(AppendEntriesResponse),
-    VoteResponse {
-        from: usize,
-        term: u64,
-        vote_granted: bool,
-    },
+    VoteResponse(VoteResponse),
     ClientCmd(AppEvent),
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct VoteResponse {
+    from: usize,
+    term: u64,
+    vote_granted: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
