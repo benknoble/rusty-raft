@@ -74,14 +74,7 @@ impl State {
     pub fn next<S: Snapshotter>(&mut self, #[expect(unused)] s: &mut S, e: Event) -> Output {
         match e {
             Event::ApplyEntries() => self.apply_entries(),
-            Event::ElectionTimeout() => {
-                use Type::*;
-                match self.t {
-                    // maybe we've converted before the most recent timeout; ignore it
-                    Leader { .. } => Output::Ok(),
-                    _ => self.become_candidate(),
-                }
-            }
+            Event::ElectionTimeout() => self.maybe_start_election(),
             Event::VoteResponse {
                 from,
                 term,
@@ -272,6 +265,14 @@ impl State {
             self.state.next(self.log[self.last_applied].cmd.clone());
         }
         Output::Ok()
+    }
+
+    fn maybe_start_election(&mut self) -> Output {
+        match self.t {
+            // maybe we've converted before the most recent timeout; ignore it
+            Type::Leader { .. } => Output::Ok(),
+            _ => self.become_candidate(),
+        }
     }
 
     // Log functions
