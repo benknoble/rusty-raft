@@ -75,6 +75,7 @@ enum Type {
 
 impl State {
     pub fn new(id: usize, cluster_size: usize) -> Self {
+        assert!(cluster_size > 0);
         Self {
             current_term: 0,
             voted_for: None,
