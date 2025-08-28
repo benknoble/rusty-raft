@@ -98,6 +98,10 @@ impl State {
         0..self.cluster_size
     }
 
+    fn ids_but_self(&self) -> impl Iterator<Item = usize> {
+        self.ids().filter(|&i| i != self.id)
+    }
+
     pub fn next<S: Snapshotter>(&mut self, #[expect(unused)] s: &mut S, e: Event) -> Output {
         match e {
             Event::ApplyEntries() => self.apply_entries(),
@@ -129,7 +133,7 @@ impl State {
         // who sends out the RPCs? if we had a Vec<Networkable>, we could, but we would also need
         // some form of (fake?) parallelism
         Output::VoteRequests(
-            self.ids()
+            self.ids_but_self()
                 .map(|i| VoteRequest {
                     to: i,
                     from: self.id,
@@ -147,7 +151,7 @@ impl State {
             match_index: vec![0; self.cluster_size],
         };
         Output::AppendEntriesRequests(
-            self.ids()
+            self.ids_but_self()
                 .map(|i| AppendEntries {
                     to: i,
                     term: self.current_term,
@@ -166,8 +170,7 @@ impl State {
     fn check_followers(&self) -> Output {
         match &self.t {
             Type::Leader { next_index, .. } => Output::AppendEntriesRequests(
-                self.ids()
-                    .filter(|&i| i != self.id)
+                self.ids_but_self()
                     .map(|i| {
                         let next_index = next_index[i];
                         AppendEntries {
