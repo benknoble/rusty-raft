@@ -251,6 +251,7 @@ fn driver(
 fn start_net_and_states<'scope, 'env>(
     s: &'scope thread::Scope<'scope, 'env>,
     states: &'scope mut Vec<State>,
+    election_timeout: Duration,
 ) -> Vec<mpsc::Sender<TestEvent>> {
     let (net_tx, net_rx) = mpsc::channel();
     let mut test_txs = vec![];
@@ -259,9 +260,20 @@ fn start_net_and_states<'scope, 'env>(
         let (test_tx, test_rx) = mpsc::channel();
         test_txs.push(test_tx);
         let (inbox, rx) = mpsc::channel();
-        inboxes.push(inbox);
+        inboxes.push(inbox.clone());
         let net_tx = net_tx.clone();
         s.spawn(|| driver(state, rx, net_tx, test_rx));
+        let election_timeout = election_timeout;
+        s.spawn(move || loop {
+            thread::sleep(election_timeout);
+            // TODO: sends too many (or handler needs to be smarter): otherwise we trigger an
+            // election when we don't need to (say, because we've just seen a heartbeat and should
+            // restart our timer). The effect is that we try to move our commit_index backwards,
+            // yikes!
+            if inbox.send(Event::ElectionTimeout()).is_err() {
+                break;
+            }
+        });
     }
 
     // network
@@ -289,7 +301,8 @@ fn test_many_auto() {
     states[0].become_leader();
 
     thread::scope(|s| {
-        let test_txs = start_net_and_states(&s, &mut states);
+        // flake: see TODO in start_net_and_states about starting more elections than necessary
+        let test_txs = start_net_and_states(&s, &mut states, test_wait * 5);
 
         // could try to fuzz (ignoring elections):
         // - send a ClientCmd to test_txs[0]
@@ -355,7 +368,7 @@ fn test_commits_with_majority_odd() {
     states[0].become_leader();
 
     thread::scope(|s| {
-        let test_txs = start_net_and_states(&s, &mut states);
+        let test_txs = start_net_and_states(&s, &mut states, test_wait * 3);
 
         // send a few commands
         for _ in 1..=3 {
@@ -422,7 +435,7 @@ fn test_commits_with_majority_even() {
     states[0].become_leader();
 
     thread::scope(|s| {
-        let test_txs = start_net_and_states(&s, &mut states);
+        let test_txs = start_net_and_states(&s, &mut states, test_wait * 3);
 
         // send a few commands
         for _ in 1..=3 {
@@ -502,7 +515,7 @@ fn candidate_converts_when_it_sees_a_leader() {
 fn election_degenerate() {
     let mut states = vec![State::new(0, 1)];
     thread::scope(|s| {
-        let test_txs = start_net_and_states(&s, &mut states);
+        let test_txs = start_net_and_states(&s, &mut states, Duration::from_millis(25));
         test_txs[0]
             .send(TestEvent::E(Event::ElectionTimeout()))
             .expect("sent");
@@ -522,7 +535,7 @@ fn election_two() {
     let test_wait = Duration::from_millis(25);
     let mut states = (0..2).map(|i| State::new(i, 2)).collect();
     thread::scope(|s| {
-        let test_txs = start_net_and_states(&s, &mut states);
+        let test_txs = start_net_and_states(&s, &mut states, test_wait * 3);
         test_txs[0]
             .send(TestEvent::E(Event::ElectionTimeout()))
             .expect("sent");
@@ -552,7 +565,7 @@ fn election_many_one() {
     let test_wait = Duration::from_millis(25);
     let mut states = (0..5).map(|i| State::new(i, 5)).collect();
     thread::scope(|s| {
-        let test_txs = start_net_and_states(&s, &mut states);
+        let test_txs = start_net_and_states(&s, &mut states, test_wait * 3);
         test_txs[0]
             .send(TestEvent::E(Event::ElectionTimeout()))
             .expect("sent");
