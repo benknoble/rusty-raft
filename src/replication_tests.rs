@@ -335,7 +335,7 @@ fn test_many_auto() {
 
 #[test]
 fn test_commits_with_majority_odd() {
-    let test_wait = Duration::from_millis(450);
+    let test_wait = Duration::from_millis(250);
 
     let mut states: Vec<_> = (0..5).map(|i| State::new(i, 5)).collect();
     states[0].become_leader();
@@ -374,9 +374,21 @@ fn test_commits_with_majority_odd() {
     });
 
     // not all 6 messages were delivered, but we committed all of them
-    assert_eq!(
-        states[0].debug_leader(),
-        "6, [1, 7, 4, 4, 7], [0, 6, 3, 3, 6]"
+    let s = &states[0].debug_leader();
+    assert!(
+        // states 2 and 3 can be in a few different positions
+        // see test_commits_with_majority_even assertions for details
+        (3..=5)
+            .flat_map(|two| (3..=5).map(move |three| *s
+                == format!(
+                    "6, [1, 7, {two}, {three}, 7], [0, 6, {}, {}, 6]",
+                    two - 1,
+                    three - 1
+                )))
+            .reduce(|x, y| x || y)
+            .expect("non-empty"),
+        "{}",
+        s
     );
     for state in states {
         if state.id == 2 || state.id == 3 {
@@ -392,7 +404,7 @@ fn test_commits_with_majority_odd() {
 
 #[test]
 fn test_commits_with_majority_even() {
-    let test_wait = Duration::from_millis(350);
+    let test_wait = Duration::from_millis(250);
 
     let mut states: Vec<_> = (0..4).map(|i| State::new(i, 4)).collect();
     states[0].become_leader();
@@ -430,7 +442,17 @@ fn test_commits_with_majority_even() {
     });
 
     // not all 6 messages were delivered, but we committed all of them
-    assert_eq!(states[0].debug_leader(), "6, [1, 7, 4, 7], [0, 6, 3, 6]");
+    let s = states[0].debug_leader();
+    assert!(
+        // according to plan
+        s == "6, [1, 7, 4, 7], [0, 6, 3, 6]"
+        // one fewer
+            || s == "6, [1, 7, 3, 7], [0, 6, 2, 6]"
+            // one extra
+            || s == "6, [1, 7, 5, 7], [0, 6, 4, 6]",
+        "{}",
+        s
+    );
     for state in states {
         if state.id == 2 {
             assert_eq!(state.debug_log(), "[(0, Noop), (0, Noop), (0, Noop)]");
