@@ -9,6 +9,7 @@ pub mod config;
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Message {
     VoteRequest(super::VoteRequest),
+    VoteResponse(super::VoteResponse),
     AppendEntriesRequest(super::AppendEntries),
     AppendEntriesResponse(super::AppendEntriesResponse),
 }
@@ -17,6 +18,7 @@ impl Message {
     pub fn to(&self) -> usize {
         match self {
             Message::VoteRequest(r) => r.to,
+            Message::VoteResponse(r) => r.to,
             Message::AppendEntriesRequest(r) => r.to,
             Message::AppendEntriesResponse(r) => r.to,
         }
@@ -27,6 +29,7 @@ impl From<Message> for Event {
     fn from(r: Message) -> Self {
         match r {
             Message::VoteRequest(inner) => Event::VoteRequest(inner),
+            Message::VoteResponse(inner) => Event::VoteResponse(inner),
             Message::AppendEntriesRequest(inner) => Event::AppendEntriesRequest(inner),
             Message::AppendEntriesResponse(inner) => Event::AppendEntriesResponse(inner),
         }
@@ -41,6 +44,18 @@ impl VoteRequest {
 
 impl From<VoteRequest> for Message {
     fn from(a: VoteRequest) -> Self {
+        a.into_message()
+    }
+}
+
+impl VoteResponse {
+    fn into_message(self) -> Message {
+        Message::VoteResponse(self)
+    }
+}
+
+impl From<VoteResponse> for Message {
+    fn from(a: VoteResponse) -> Self {
         a.into_message()
     }
 }
