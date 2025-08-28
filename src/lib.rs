@@ -345,6 +345,8 @@ impl State {
         let match_index = index_to_insert - 1;
         if r.commit > self.commit_index {
             self.commit_index = std::cmp::min(r.commit, match_index);
+            // TODO: this is the only place commit_index should change. Fold apply_entries here?
+            // But then what notifies waiting clients… we'd need a richer Output
         }
         AppendEntriesResponse::succeed(self.id, r.leader_id, self.current_term, match_index)
     }
