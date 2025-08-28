@@ -235,6 +235,8 @@ impl State {
         )
     }
 
+    // handler functions
+
     fn check_followers(&self) -> Output {
         use Type::*;
         match &self.t {
@@ -335,6 +337,8 @@ impl State {
         }
         AppendEntriesResponse::succeed(self.id, r.leader_id, self.current_term, match_index)
     }
+
+    // Test functions
 
     #[cfg(test)]
     fn debug_log(&self) -> String {
