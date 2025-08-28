@@ -546,3 +546,33 @@ fn election_two() {
         });
     }
 }
+
+#[test]
+fn election_many_one() {
+    let test_wait = Duration::from_millis(25);
+    let mut states = (0..5).map(|i| State::new(i, 5)).collect();
+    thread::scope(|s| {
+        let test_txs = start_net_and_states(&s, &mut states);
+        test_txs[0]
+            .send(TestEvent::E(Event::ElectionTimeout()))
+            .expect("sent");
+
+        // flaky?
+        thread::sleep(test_wait);
+
+        // shutdown
+        for tx in test_txs {
+            tx.send(TestEvent::Quit).expect("sent");
+        }
+    });
+    assert!(match states[0].t {
+        Type::Leader { .. } => true,
+        _ => false,
+    });
+    for state in &states[1..] {
+        assert!(match state.t {
+            Type::Follower() => true,
+            _ => false,
+        });
+    }
+}
