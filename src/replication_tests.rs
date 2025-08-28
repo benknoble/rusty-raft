@@ -256,14 +256,7 @@ fn start_net_and_states<'scope, 'env>(
             let Ok(r) = net_rx.recv() else {
                 break;
             };
-            // we may not have an inbox for everyone that the hosts generate messages for: the
-            // implementation currently hardcodes some things about net::config::COUNT, so hack
-            // around that
-            if inboxes
-                .get(r.to())
-                .map(|i| i.send(r.into()).is_err())
-                .unwrap_or(false)
-            {
+            if inboxes[r.to()].send(r.into()).is_err() {
                 break;
             }
         }
