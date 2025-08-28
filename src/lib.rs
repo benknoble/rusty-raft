@@ -106,7 +106,7 @@ impl State {
     }
 
     fn become_follower(&mut self, term: u64) {
-        assert!(term > self.current_term);
+        assert!(term >= self.current_term);
         self.t = Type::Follower();
         self.current_term = term;
         self.voted_for = None;
@@ -302,7 +302,7 @@ impl State {
                 return AppendEntriesResponse::fail(self.id, r.leader_id, self.current_term, 0)
             };
         }
-        if r.term > self.current_term {
+        if r.term >= self.current_term {
             self.become_follower(r.term);
         } else if r.term < self.current_term {
             fail!();

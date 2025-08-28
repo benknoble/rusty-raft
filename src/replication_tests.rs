@@ -318,3 +318,26 @@ fn test_many_auto() {
         );
     }
 }
+
+#[test]
+fn candidate_converts_when_it_sees_a_leader() {
+    let mut s1 = State::new(0);
+    let mut s2 = State::new(1);
+    let mut sn: Snapshot = Default::default();
+    s1.become_candidate();
+    s2.become_candidate();
+
+    // assume s2 wins election…
+
+    let Output::Heartbeat(reqs) = s2.become_leader() else {
+        return assert!(false, "don't know how to process the output");
+    };
+
+    let req = find_req(0, reqs);
+    let ae: net::Message = req.into();
+    s1.next(&mut sn, ae.into());
+    assert!(match s1.t {
+        Type::Follower() => true,
+        _ => false,
+    });
+}
