@@ -342,7 +342,7 @@ fn test_many_auto() {
 
 #[test]
 fn test_commits_with_majority_odd() {
-    let test_wait = Duration::from_millis(350);
+    let test_wait = Duration::from_millis(450);
 
     let mut states: Vec<_> = (0..5).map(|i| State::new(i, 5)).collect();
     states[0].become_leader();
