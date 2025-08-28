@@ -588,8 +588,8 @@ pub trait Snapshotter {
 }
 
 #[cfg(test)]
-mod append_entries_test;
+mod test_append_entries;
 #[cfg(test)]
-mod replication_tests;
+mod test_replication;
 #[cfg(test)]
-mod save_restore_tests;
+mod test_save_restore;

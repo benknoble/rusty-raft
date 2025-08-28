@@ -1,5 +1,5 @@
 use crate::*;
-use save_restore_tests::Snapshot;
+use test_save_restore::Snapshot;
 
 fn find_req(id: usize, reqs: Vec<AppendEntries>) -> AppendEntries {
     let mut req = None;
