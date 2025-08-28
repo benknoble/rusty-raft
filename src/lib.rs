@@ -84,44 +84,7 @@ impl State {
             Event::AppendEntriesRequest(req) => {
                 Output::AppendEntriesResponse(self.append_entries(req))
             }
-            Event::AppendEntriesResponse(rep) => {
-                assert!(rep.to == self.id);
-                if rep.term > self.current_term {
-                    self.become_follower(rep.term);
-                    return Output::Ok();
-                }
-                if rep.term != self.current_term {
-                    return Output::Ok();
-                }
-                match &mut self.t {
-                    Type::Leader {
-                        next_index,
-                        match_index,
-                    } => {
-                        if rep.success {
-                            next_index[rep.from] = rep.match_index + 1;
-                            match_index[rep.from] = rep.match_index;
-                            // TODO should we recompute commit index here? saves us an incoming
-                            // event to periodically check it, since it can't change except here…
-                            Output::Ok()
-                        } else {
-                            next_index[rep.from] -= 1;
-                            let prev_index = next_index[rep.from] - 1;
-                            Output::AppendEntriesRequests(vec![AppendEntries {
-                                to: rep.from,
-                                term: self.current_term,
-                                leader_id: self.id,
-                                prev_log_index: prev_index,
-                                prev_log_term: self.log[prev_index].term,
-                                commit: self.commit_index,
-                                entries: vec![],
-                            }])
-                        }
-                    }
-                    // drop it: we are no longer the leader
-                    _ => Output::Ok(),
-                }
-            }
+            Event::AppendEntriesResponse(rep) => self.receive_append_entries_response(rep),
             Event::CheckFollowers() => self.check_followers(),
         }
     }
@@ -273,6 +236,45 @@ impl State {
                 Output::ClientWaitFor(self.last_index())
             }
             _ => todo!("should forward leader id (needs more state)"),
+        }
+    }
+
+    fn receive_append_entries_response(&mut self, rep: AppendEntriesResponse) -> Output {
+        assert!(rep.to == self.id);
+        if rep.term > self.current_term {
+            self.become_follower(rep.term);
+            return Output::Ok();
+        }
+        if rep.term != self.current_term {
+            return Output::Ok();
+        }
+        match &mut self.t {
+            Type::Leader {
+                next_index,
+                match_index,
+            } => {
+                if rep.success {
+                    next_index[rep.from] = rep.match_index + 1;
+                    match_index[rep.from] = rep.match_index;
+                    // TODO should we recompute commit index here? saves us an incoming event to
+                    // periodically check it, since it can't change except here…
+                    Output::Ok()
+                } else {
+                    next_index[rep.from] -= 1;
+                    let prev_index = next_index[rep.from] - 1;
+                    Output::AppendEntriesRequests(vec![AppendEntries {
+                        to: rep.from,
+                        term: self.current_term,
+                        leader_id: self.id,
+                        prev_log_index: prev_index,
+                        prev_log_term: self.log[prev_index].term,
+                        commit: self.commit_index,
+                        entries: vec![],
+                    }])
+                }
+            }
+            // drop it: we are no longer the leader
+            _ => Output::Ok(),
         }
     }
 
