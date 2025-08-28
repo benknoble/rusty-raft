@@ -281,7 +281,7 @@ fn start_net_and_states<'scope, 'env>(
 
 #[test]
 fn test_many_auto() {
-    let test_wait = Duration::from_millis(250);
+    let test_wait = Duration::from_millis(25);
 
     let mut states: Vec<_> = (0..net::config::COUNT)
         .map(|i| State::new(i, net::config::COUNT))
@@ -349,7 +349,7 @@ fn test_many_auto() {
 
 #[test]
 fn test_commits_with_majority_odd() {
-    let test_wait = Duration::from_millis(250);
+    let test_wait = Duration::from_millis(25);
 
     let mut states: Vec<_> = (0..5).map(|i| State::new(i, 5)).collect();
     states[0].become_leader();
@@ -416,7 +416,7 @@ fn test_commits_with_majority_odd() {
 
 #[test]
 fn test_commits_with_majority_even() {
-    let test_wait = Duration::from_millis(250);
+    let test_wait = Duration::from_millis(25);
 
     let mut states: Vec<_> = (0..4).map(|i| State::new(i, 4)).collect();
     states[0].become_leader();
