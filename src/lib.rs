@@ -80,31 +80,7 @@ impl State {
                 term,
                 vote_granted,
             } => self.receive_vote(from, term, vote_granted),
-            Event::ClientCmd(app_event) => {
-                /* This actually generates a "client waiting on commit for entry i" output.
-                 *
-                 * In the meantime, somebody else is (periodically) checking for entries that need
-                 * replicated. That can delay responses, though, so it's on a short timeout. Once
-                 * it sees a new entry, it should quickly queue an event to send that entry out.
-                 * Can this be the _same_ as the heartbeat mechanism? TODO
-                 * Heartbeat loop per follower:
-                 *      - hey, time to fire off an AE again!
-                 *      - might be empty, might not
-                 *      - no need to reset timer: just send more than strictly necessary
-                 *
-                 * However, we know nobody has seen this entry… so when we get a "waiting on
-                 * commit," we automatically queue up AppendEntries for all hosts. It's the driver
-                 * loop's job to do so.
-                 */
-                use Type::*;
-                match self.t {
-                    Leader { .. } => {
-                        self.log.push(LogEntry::new(self.current_term, app_event));
-                        Output::ClientWaitFor(self.last_index())
-                    }
-                    _ => todo!("should forward leader id (needs more state)"),
-                }
-            }
+            Event::ClientCmd(app_event) => self.push_cmd(app_event),
             Event::AppendEntriesRequest(req) => {
                 Output::AppendEntriesResponse(self.append_entries(req))
             }
@@ -273,6 +249,30 @@ impl State {
             }
             // maybe we've converted since the request went out; ignore it
             _ => Output::Ok(),
+        }
+    }
+
+    fn push_cmd(&mut self, e: AppEvent) -> Output {
+        /* This actually generates a "client waiting on commit for entry i" output.
+         *
+         * In the meantime, somebody else is (periodically) checking for entries that need
+         * replicated. That can delay responses, though, so it's on a short timeout. Once it sees a
+         * new entry, it should quickly queue an event to send that entry out. Can this be the
+         * _same_ as the heartbeat mechanism? TODO
+         * Heartbeat loop per follower:
+         *      - hey, time to fire off an AE again!
+         *      - might be empty, might not
+         *      - no need to reset timer: just send more than strictly necessary
+         *
+         * However, we know nobody has seen this entry… so when we get a "waiting on commit," we
+         * automatically queue up AppendEntries for all hosts. It's the driver loop's job to do so.
+         */
+        match self.t {
+            Type::Leader { .. } => {
+                self.log.push(LogEntry::new(self.current_term, e));
+                Output::ClientWaitFor(self.last_index())
+            }
+            _ => todo!("should forward leader id (needs more state)"),
         }
     }
 
