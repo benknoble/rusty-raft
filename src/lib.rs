@@ -28,6 +28,22 @@ pub struct State {
     id: usize,
 }
 
+// macros
+
+/// if this doesn't return from a handler function, then self.current_term == term
+macro_rules! check_term {
+    ($self:expr, $term:expr) => {
+        if $term > $self.current_term {
+            $self.become_follower($term);
+            return Output::Ok();
+        }
+        if $term != $self.current_term {
+            // drop response
+            return Output::Ok();
+        }
+    };
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 struct LogEntry {
     /// when seen by leader
@@ -185,14 +201,7 @@ impl State {
     }
 
     fn receive_vote(&mut self, from: usize, term: u64, vote_granted: bool) -> Output {
-        if term > self.current_term {
-            self.become_follower(term);
-            return Output::Ok();
-        }
-        if term != self.current_term {
-            // drop response
-            return Output::Ok();
-        }
+        check_term!(self, term);
         match &mut self.t {
             Type::Candidate { voters } => {
                 if vote_granted {
@@ -240,13 +249,7 @@ impl State {
 
     fn receive_append_entries_response(&mut self, rep: AppendEntriesResponse) -> Output {
         assert!(rep.to == self.id);
-        if rep.term > self.current_term {
-            self.become_follower(rep.term);
-            return Output::Ok();
-        }
-        if rep.term != self.current_term {
-            return Output::Ok();
-        }
+        check_term!(self, rep.term);
         match &mut self.t {
             Type::Leader {
                 next_index,
