@@ -206,6 +206,7 @@ impl State {
     }
 
     fn receive_vote(&mut self, r: VoteResponse) -> Output {
+        assert!(r.to == self.id);
         check_term!(self, r.term);
         if r.vote_granted {
             self.update_votes(r.from);
@@ -432,6 +433,7 @@ pub enum Event {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct VoteResponse {
+    to: usize,
     from: usize,
     term: u64,
     vote_granted: bool,
