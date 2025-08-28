@@ -145,126 +145,135 @@ fn test_2_servers_manual() {
     );
 }
 
-#[test]
-fn test_many_auto() {
-    use std::sync::*;
-    use std::thread;
-    use std::time::Duration;
+use std::sync::*;
+use std::thread;
+use std::time::Duration;
 
-    enum TestEvent {
-        Quit,
-        Pause,
-        Resume,
-        E(Event),
+enum TestEvent {
+    Quit,
+    Pause,
+    Resume,
+    E(Event),
+}
+
+fn driver(
+    s: &mut State,
+    rx: mpsc::Receiver<Event>,
+    tx: mpsc::Sender<net::Message>,
+    test_rx: mpsc::Receiver<TestEvent>,
+) {
+    let mut sn: Snapshot = Default::default();
+    let mut go = true;
+
+    enum Cont {
+        None,
+        Some(Event),
+        Abort,
     }
+    use Cont::*;
 
-    let test_wait = Duration::from_millis(250);
-
-    fn driver(
-        s: &mut State,
-        rx: mpsc::Receiver<Event>,
-        tx: mpsc::Sender<net::Message>,
-        test_rx: mpsc::Receiver<TestEvent>,
-    ) {
-        let mut sn: Snapshot = Default::default();
-        let mut go = true;
-
-        enum Cont {
-            None,
-            Some(Event),
-            Abort,
-        }
-        use Cont::*;
-
-        let mut handle_event = |e: Event| match s.next(&mut sn, e) {
-            Output::Ok() => None,
-            Output::StartElection { .. } => unimplemented!("not needed in this test"),
-            Output::ClientWaitFor(_) => Some(Event::CheckFollowers()),
-            Output::Heartbeat(reqs) | Output::AppendEntriesRequests(reqs) => {
-                for req in reqs {
-                    if tx.send(req.into()).is_err() {
-                        return Abort;
-                    }
-                }
-                None
-            }
-            Output::AppendEntriesResponse(rep) => {
-                if tx.send(rep.into()).is_err() {
-                    Abort
-                } else {
-                    None
-                }
-            }
-        };
-
-        let mut rec_event = |e: Event| {
-            let mut e = e;
-            loop {
-                match handle_event(e) {
-                    None => break,
-                    Some(new_e) => e = new_e,
-                    Abort => return Abort,
+    let mut handle_event = |e: Event| match s.next(&mut sn, e) {
+        Output::Ok() => None,
+        Output::StartElection { .. } => unimplemented!("not needed in this test"),
+        Output::ClientWaitFor(_) => Some(Event::CheckFollowers()),
+        Output::Heartbeat(reqs) | Output::AppendEntriesRequests(reqs) => {
+            for req in reqs {
+                if tx.send(req.into()).is_err() {
+                    return Abort;
                 }
             }
             None
-        };
-
-        use TestEvent::*;
-        loop {
-            match test_rx.try_recv() {
-                Ok(Quit) => break,
-                Err(mpsc::TryRecvError::Empty) => (),
-                Err(mpsc::TryRecvError::Disconnected) => break,
-                Ok(Pause) => go = false,
-                Ok(Resume) => go = true,
-                Ok(E(e)) => match rec_event(e) {
-                    Abort => break,
-                    None => (),
-                    Some(_) => unimplemented!("recursive error!"),
-                },
-            }
-            if !go {
-                continue;
-            }
-            match rx.try_recv() {
-                Ok(e) => match rec_event(e) {
-                    Abort => break,
-                    None => (),
-                    Some(_) => unimplemented!("recursive error!"),
-                },
-                Err(mpsc::TryRecvError::Empty) => (),
-                Err(mpsc::TryRecvError::Disconnected) => break,
+        }
+        Output::AppendEntriesResponse(rep) => {
+            if tx.send(rep.into()).is_err() {
+                Abort
+            } else {
+                None
             }
         }
+    };
+
+    let mut rec_event = |e: Event| {
+        let mut e = e;
+        loop {
+            match handle_event(e) {
+                None => break,
+                Some(new_e) => e = new_e,
+                Abort => return Abort,
+            }
+        }
+        None
+    };
+
+    use TestEvent::*;
+    loop {
+        match test_rx.try_recv() {
+            Ok(Quit) => break,
+            Err(mpsc::TryRecvError::Empty) => (),
+            Err(mpsc::TryRecvError::Disconnected) => break,
+            Ok(Pause) => go = false,
+            Ok(Resume) => go = true,
+            Ok(E(e)) => match rec_event(e) {
+                Abort => break,
+                None => (),
+                Some(_) => unimplemented!("recursive error!"),
+            },
+        }
+        if !go {
+            continue;
+        }
+        match rx.try_recv() {
+            Ok(e) => match rec_event(e) {
+                Abort => break,
+                None => (),
+                Some(_) => unimplemented!("recursive error!"),
+            },
+            Err(mpsc::TryRecvError::Empty) => (),
+            Err(mpsc::TryRecvError::Disconnected) => break,
+        }
     }
+}
+
+fn start_net_and_states<'scope, 'env>(
+    s: &'scope thread::Scope<'scope, 'env>,
+    states: &'scope mut Vec<State>,
+) -> Vec<mpsc::Sender<TestEvent>> {
+    let (net_tx, net_rx) = mpsc::channel();
+    let mut test_txs = vec![];
+    let mut inboxes = vec![];
+    for state in states.iter_mut() {
+        let (test_tx, test_rx) = mpsc::channel();
+        test_txs.push(test_tx);
+        let (inbox, rx) = mpsc::channel();
+        inboxes.push(inbox);
+        let net_tx = net_tx.clone();
+        s.spawn(|| driver(state, rx, net_tx, test_rx));
+    }
+
+    // network
+    s.spawn(move || {
+        loop {
+            let Ok(r) = net_rx.recv() else {
+                break;
+            };
+            if inboxes[r.to()].send(r.into()).is_err() {
+                break;
+            }
+        }
+    });
+
+    test_txs
+}
+
+#[test]
+fn test_many_auto() {
+    let test_wait = Duration::from_millis(250);
 
     let mut states: Vec<_> = (0..net::config::COUNT).map(State::new).collect();
     states[0].become_leader();
 
     thread::scope(|s| {
-        let (net_tx, net_rx) = mpsc::channel();
-        let mut test_txs = vec![];
-        let mut inboxes = vec![];
-        for state in states.iter_mut() {
-            let (test_tx, test_rx) = mpsc::channel();
-            test_txs.push(test_tx);
-            let (inbox, rx) = mpsc::channel();
-            inboxes.push(inbox);
-            let net_tx = net_tx.clone();
-            s.spawn(|| driver(state, rx, net_tx, test_rx));
-        }
-
-        // network
-        s.spawn(move || {
-            loop {
-                let Ok(r) = net_rx.recv() else {
-                    break;
-                };
-                if inboxes[r.to()].send(r.into()).is_err() {
-                    break;
-                }
-            }
-        });
+        let test_txs = start_net_and_states(&s, &mut states);
 
         // could try to fuzz (ignoring elections):
         // - send a ClientCmd to test_txs[0]
