@@ -26,7 +26,7 @@ fn test_2_servers_manual() {
     let ae: Event = ae.into();
     s2.next(&mut sn, ae);
     assert_eq!(s2.debug_log(), "[]");
-    assert_eq!(s1.debug_leader(), "[1, 1, 1, 1, 1], [0, 0, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "0, [1, 1, 1, 1, 1], [0, 0, 0, 0, 0]");
 
     let Output::ClientWaitFor(idx) = s1.next(&mut sn, Event::ClientCmd(AppEvent::Noop())) else {
         return assert!(false, "don't know how to process the output");
@@ -45,7 +45,7 @@ fn test_2_servers_manual() {
     let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
         return assert!(false, "don't know how to process the output");
     };
-    assert_eq!(s1.debug_leader(), "[1, 2, 1, 1, 1], [0, 1, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "0, [1, 2, 1, 1, 1], [0, 1, 0, 0, 0]");
 
     // drop a few AppendEntries calls: driver loop would normally trigger a CheckFollowers and
     // handle any results immediately when it gets the ClientWaitFor outputs.
@@ -60,7 +60,7 @@ fn test_2_servers_manual() {
     s1.become_candidate();
     // skip simulated voting…
     s1.become_leader();
-    assert_eq!(s1.debug_leader(), "[5, 5, 5, 5, 5], [0, 0, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "0, [5, 5, 5, 5, 5], [0, 0, 0, 0, 0]");
 
     // send heartbeats
     let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
@@ -78,7 +78,7 @@ fn test_2_servers_manual() {
     else {
         return assert!(false, "don't know how to process the output");
     };
-    assert_eq!(s1.debug_leader(), "[5, 4, 5, 5, 5], [0, 0, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "0, [5, 4, 5, 5, 5], [0, 0, 0, 0, 0]");
 
     // try again
     let req = find_req(1, reqs);
@@ -93,7 +93,7 @@ fn test_2_servers_manual() {
     else {
         return assert!(false, "don't know how to process the output");
     };
-    assert_eq!(s1.debug_leader(), "[5, 3, 5, 5, 5], [0, 0, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "0, [5, 3, 5, 5, 5], [0, 0, 0, 0, 0]");
 
     // try again
     let req = find_req(1, reqs);
@@ -109,7 +109,7 @@ fn test_2_servers_manual() {
     else {
         return assert!(false, "don't know how to process the output");
     };
-    assert_eq!(s1.debug_leader(), "[5, 2, 5, 5, 5], [0, 0, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "0, [5, 2, 5, 5, 5], [0, 0, 0, 0, 0]");
 
     // try again
     let req = find_req(1, reqs);
@@ -123,7 +123,7 @@ fn test_2_servers_manual() {
     let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
         return assert!(false, "don't know how to process the output");
     };
-    assert_eq!(s1.debug_leader(), "[5, 2, 5, 5, 5], [0, 1, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "0, [5, 2, 5, 5, 5], [0, 1, 0, 0, 0]");
 
     // keep going to get up to speed…
     let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
@@ -138,7 +138,7 @@ fn test_2_servers_manual() {
     let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
         return assert!(false, "don't know how to process the output");
     };
-    assert_eq!(s1.debug_leader(), "[5, 5, 5, 5, 5], [0, 4, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "0, [5, 5, 5, 5, 5], [0, 4, 0, 0, 0]");
     assert_eq!(
         s2.debug_log(),
         "[(0, Noop), (0, Noop), (0, Noop), (0, Noop)]"
@@ -319,7 +319,10 @@ fn test_many_auto() {
     });
 
     // all 6 messages were delivered
-    assert_eq!(states[0].debug_leader(), "[1, 7, 7, 7, 7], [0, 6, 6, 6, 6]");
+    assert_eq!(
+        states[0].debug_leader(),
+        "6, [1, 7, 7, 7, 7], [0, 6, 6, 6, 6]"
+    );
     for state in states {
         assert_eq!(
             state.debug_log(),

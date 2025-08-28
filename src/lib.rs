@@ -381,7 +381,7 @@ impl State {
             Type::Leader {
                 next_index,
                 match_index,
-            } => format!("{next_index:?}, {match_index:?}"),
+            } => format!("{}, {next_index:?}, {match_index:?}", self.commit_index),
             _ => unimplemented!(),
         }
     }
