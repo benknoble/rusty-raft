@@ -12,7 +12,7 @@ fn has_majority(count: usize) -> bool {
 pub struct State {
     // persistent state
     /// latest term server has seen
-    current_term: usize,
+    current_term: u64,
     /// who received my vote, if any
     voted_for: Option<usize>,
     log: Vec<LogEntry>,
@@ -31,12 +31,12 @@ pub struct State {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 struct LogEntry {
     /// when seen by leader
-    term: usize,
+    term: u64,
     cmd: AppEvent,
 }
 
 impl LogEntry {
-    fn new(term: usize, cmd: AppEvent) -> Self {
+    fn new(term: u64, cmd: AppEvent) -> Self {
         Self { term, cmd }
     }
 }
@@ -89,7 +89,7 @@ impl State {
         }
     }
 
-    fn become_follower(&mut self, term: usize) {
+    fn become_follower(&mut self, term: u64) {
         assert!(term > self.current_term);
         self.t = Type::Follower();
         self.current_term = term;
@@ -185,7 +185,7 @@ impl State {
         }
     }
 
-    fn receive_vote(&mut self, from: usize, term: usize, vote_granted: bool) -> Output {
+    fn receive_vote(&mut self, from: usize, term: u64, vote_granted: bool) -> Output {
         if term > self.current_term {
             self.become_follower(term);
             return Output::Ok();
@@ -376,10 +376,10 @@ pub enum Output {
     Ok(),
     /// enough details to make a RequestVote RPC
     StartElection {
-        term: usize,
+        term: u64,
         candidate_id: usize,
         last_log_index: usize,
-        last_log_term: usize,
+        last_log_term: u64,
     },
     ClientWaitFor(usize),
     Heartbeat(Vec<AppendEntries>),
@@ -397,7 +397,7 @@ pub enum Event {
     AppendEntriesResponse(AppendEntriesResponse),
     VoteResponse {
         from: usize,
-        term: usize,
+        term: u64,
         vote_granted: bool,
     },
     ClientCmd(AppEvent),
@@ -406,10 +406,10 @@ pub enum Event {
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct AppendEntries {
     to: usize,
-    term: usize,
+    term: u64,
     leader_id: usize,
     prev_log_index: usize,
-    prev_log_term: usize,
+    prev_log_term: u64,
     commit: usize,
     entries: Vec<LogEntry>,
 }
@@ -419,12 +419,12 @@ pub struct AppendEntriesResponse {
     to: usize,
     from: usize,
     match_index: usize,
-    term: usize,
+    term: u64,
     success: bool,
 }
 
 impl AppendEntriesResponse {
-    fn succeed(from: usize, to: usize, term: usize, match_index: usize) -> Self {
+    fn succeed(from: usize, to: usize, term: u64, match_index: usize) -> Self {
         Self {
             to,
             from,
@@ -434,7 +434,7 @@ impl AppendEntriesResponse {
         }
     }
 
-    fn fail(from: usize, to: usize, term: usize, match_index: usize) -> Self {
+    fn fail(from: usize, to: usize, term: u64, match_index: usize) -> Self {
         Self {
             to,
             from,
