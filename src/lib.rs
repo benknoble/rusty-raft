@@ -128,12 +128,17 @@ impl State {
         };
         // who sends out the RPCs? if we had a Vec<Networkable>, we could, but we would also need
         // some form of (fake?) parallelism
-        Output::StartElection {
-            term: self.current_term,
-            candidate_id: self.id,
-            last_log_index: self.last_index(),
-            last_log_term: self.last_entry().term,
-        }
+        Output::VoteRequests(
+            self.ids()
+                .map(|i| VoteRequest {
+                    to: i,
+                    from: self.id,
+                    term: self.current_term,
+                    last_log_index: self.last_index(),
+                    last_log_term: self.last_entry().term,
+                })
+                .collect(),
+        )
     }
 
     fn become_leader(&mut self) -> Output {
@@ -440,12 +445,7 @@ impl State {
 pub enum Output {
     Ok(),
     /// enough details to make a RequestVote RPC
-    StartElection {
-        term: u64,
-        candidate_id: usize,
-        last_log_index: usize,
-        last_log_term: u64,
-    },
+    VoteRequests(Vec<VoteRequest>),
     VoteResponse(VoteResponse),
     ClientWaitFor(usize),
     AppendEntriesRequests(Vec<AppendEntries>),
@@ -465,7 +465,7 @@ pub enum Event {
     ClientCmd(AppEvent),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct VoteRequest {
     to: usize,
     from: usize,

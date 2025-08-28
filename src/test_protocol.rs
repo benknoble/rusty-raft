@@ -174,7 +174,7 @@ fn driver(
 
     let mut handle_event = |e: Event| match s.next(&mut sn, e) {
         Output::Ok() => None,
-        Output::StartElection { .. } => unimplemented!("not needed in this test"),
+        Output::VoteRequests(_) => unimplemented!("not needed in this test"),
         Output::VoteResponse(_) => unimplemented!("not needed in this test"),
         Output::ClientWaitFor(_) => Some(Event::CheckFollowers()),
         Output::AppendEntriesRequests(reqs) => {
