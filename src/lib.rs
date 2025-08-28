@@ -169,6 +169,8 @@ impl State {
                         if rep.success {
                             next_index[rep.from] = rep.match_index + 1;
                             match_index[rep.from] = rep.match_index;
+                            // TODO should we recompute commit index here? saves us an incoming
+                            // event to periodically check it, since it can't change except here…
                             Output::Ok()
                         } else {
                             next_index[rep.from] -= 1;
