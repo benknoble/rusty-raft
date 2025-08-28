@@ -141,7 +141,7 @@ impl State {
             next_index: vec![self.last_index() + 1; self.cluster_size],
             match_index: vec![0; self.cluster_size],
         };
-        Output::Heartbeat(
+        Output::AppendEntriesRequests(
             self.ids()
                 .map(|i| AppendEntries {
                     to: i,
@@ -448,7 +448,6 @@ pub enum Output {
     },
     VoteResponse(VoteResponse),
     ClientWaitFor(usize),
-    Heartbeat(Vec<AppendEntries>),
     AppendEntriesRequests(Vec<AppendEntries>),
     AppendEntriesResponse(AppendEntriesResponse),
 }

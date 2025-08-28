@@ -18,7 +18,7 @@ fn test_2_servers_manual() {
     let mut s1 = State::new(0, 2);
     let mut s2 = State::new(1, 2);
 
-    let Output::Heartbeat(reqs) = s1.become_leader() else {
+    let Output::AppendEntriesRequests(reqs) = s1.become_leader() else {
         return assert!(false, "don't know how to process the output");
     };
     let req = find_req(1, reqs);
@@ -177,7 +177,7 @@ fn driver(
         Output::StartElection { .. } => unimplemented!("not needed in this test"),
         Output::VoteResponse(_) => unimplemented!("not needed in this test"),
         Output::ClientWaitFor(_) => Some(Event::CheckFollowers()),
-        Output::Heartbeat(reqs) | Output::AppendEntriesRequests(reqs) => {
+        Output::AppendEntriesRequests(reqs) => {
             for req in reqs {
                 if tx.send(req.into()).is_err() {
                     return Abort;
@@ -472,7 +472,7 @@ fn candidate_converts_when_it_sees_a_leader() {
 
     // assume s2 wins election…
 
-    let Output::Heartbeat(reqs) = s2.become_leader() else {
+    let Output::AppendEntriesRequests(reqs) = s2.become_leader() else {
         return assert!(false, "don't know how to process the output");
     };
 
