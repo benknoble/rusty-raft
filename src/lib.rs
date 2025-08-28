@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::cmp;
 use std::collections::HashSet;
 use std::io;
 
@@ -374,7 +375,7 @@ impl State {
         // match_index     = r.prev_log_index +     r.entries.len(), as desired.
         let match_index = index_to_insert - 1;
         if r.commit > self.commit_index {
-            self.commit_index = std::cmp::min(r.commit, match_index);
+            self.commit_index = cmp::min(r.commit, match_index);
             // TODO: this is the only place commit_index should change. Fold apply_entries here?
             // But then what notifies waiting clients… we'd need a richer Output
         }
