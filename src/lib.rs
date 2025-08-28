@@ -209,6 +209,7 @@ impl State {
     }
 
     fn vote(&mut self, r: VoteRequest) -> VoteResponse {
+        // TODO: save state before responding
         let r = &r;
         assert!(r.to == self.id);
         if r.term > self.current_term {
