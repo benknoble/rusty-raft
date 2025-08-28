@@ -258,8 +258,21 @@ impl State {
                 if rep.success {
                     next_index[rep.from] = rep.match_index + 1;
                     match_index[rep.from] = rep.match_index;
-                    // TODO should we recompute commit index here? saves us an incoming event to
-                    // periodically check it, since it can't change _on a leader_ except here…
+                    self.commit_index = {
+                        let mut matches = Vec::with_capacity(net::config::COUNT);
+                        matches.extend(&match_index[..self.id]);
+                        matches.extend(&match_index[self.id + 1..]);
+                        // the leader matches with itself up to the end
+                        matches.push(self.last_index());
+                        // we can do better with quickselect, but let's assume the cluster is small
+                        // enough that fancy algorithms have higher overhead.
+                        matches.sort();
+                        // in case cluster size is even: truncate. A majority will have that index.
+                        let median_index = (matches.len() - 1) / 2;
+                        let median = matches[median_index];
+                        assert!(median >= self.commit_index);
+                        median
+                    };
                     Output::Ok()
                 } else {
                     next_index[rep.from] -= 1;
