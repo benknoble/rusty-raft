@@ -78,6 +78,8 @@ impl State {
                 while self.commit_index > self.last_applied {
                     self.last_applied += 1;
                     // TODO: do something with this output for clients (only if leader…)
+                    // Reply will need to include the cmd and index: the ClientWaitFor(i) should
+                    // only finally reply success if we executed the expected cmd at i
                     self.state.next(self.log[self.last_applied].cmd.clone());
                 }
                 Output::Ok()
