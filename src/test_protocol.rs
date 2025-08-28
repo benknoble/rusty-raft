@@ -174,7 +174,14 @@ fn driver(
 
     let mut handle_event = |e: Event| match s.next(&mut sn, e) {
         Output::Ok() => None,
-        Output::VoteRequests(_) => unimplemented!("not needed in this test"),
+        Output::VoteRequests(reqs) => {
+            for req in reqs {
+                if tx.send(req.into()).is_err() {
+                    return Abort;
+                }
+            }
+            None
+        }
         Output::VoteResponse(_) => unimplemented!("not needed in this test"),
         Output::ClientWaitFor(_) => Some(Event::CheckFollowers()),
         Output::AppendEntriesRequests(reqs) => {
@@ -481,6 +488,25 @@ fn candidate_converts_when_it_sees_a_leader() {
     s1.next(&mut sn, ae.into());
     assert!(match s1.t {
         Type::Follower() => true,
+        _ => false,
+    });
+}
+
+#[test]
+fn election_degenerate() {
+    let mut states = vec![State::new(0, 1)];
+    thread::scope(|s| {
+        let test_txs = start_net_and_states(&s, &mut states);
+        test_txs[0]
+            .send(TestEvent::E(Event::ElectionTimeout()))
+            .expect("sent");
+        // shutdown
+        for tx in test_txs {
+            tx.send(TestEvent::Quit).expect("sent");
+        }
+    });
+    assert!(match states[0].t {
+        Type::Leader { .. } => true,
         _ => false,
     });
 }

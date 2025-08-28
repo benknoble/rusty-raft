@@ -129,19 +129,26 @@ impl State {
         self.current_term += 1;
         self.voted_for = Some(self.id);
         self.t = Type::Candidate {
-            voters: HashSet::new(),
+            // record our self-vote ;)
+            voters: [self.id].into(),
         };
-        Output::VoteRequests(
-            self.ids_but_self()
-                .map(|i| VoteRequest {
-                    to: i,
-                    from: self.id,
-                    term: self.current_term,
-                    last_log_index: self.last_index(),
-                    last_log_term: self.last_entry().term,
-                })
-                .collect(),
-        )
+        if self.has_majority_votes() {
+            // can only happen when cluster_size == 1, so it's OK to not send out the requests
+            assert_eq!(self.cluster_size, 1);
+            self.become_leader()
+        } else {
+            Output::VoteRequests(
+                self.ids_but_self()
+                    .map(|i| VoteRequest {
+                        to: i,
+                        from: self.id,
+                        term: self.current_term,
+                        last_log_index: self.last_index(),
+                        last_log_term: self.last_entry().term,
+                    })
+                    .collect(),
+            )
+        }
     }
 
     fn become_leader(&mut self) -> Output {
