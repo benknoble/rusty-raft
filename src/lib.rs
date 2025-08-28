@@ -288,6 +288,9 @@ impl State {
          *      - hey, time to fire off an AE again!
          *      - might be empty, might not
          *      - no need to reset timer: just send more than strictly necessary
+         * Right now, the only way to trigger a heartbeat is to, uh, send CheckFollowers (which we
+         * can do in a single timeout loop). If that doesn't work out, might need a Clock tick +
+         * timeout-per-follower.
          *
          * However, we know nobody has seen this entry… so when we get a "waiting on commit," we
          * automatically queue up AppendEntries for all hosts. It's the driver loop's job to do so.
