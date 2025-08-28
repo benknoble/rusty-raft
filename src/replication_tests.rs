@@ -15,8 +15,8 @@ fn find_req(id: usize, reqs: Vec<AppendEntries>) -> AppendEntries {
 #[test]
 fn test_2_servers_manual() {
     let mut sn: Snapshot = Default::default();
-    let mut s1 = State::new(0);
-    let mut s2 = State::new(1);
+    let mut s1 = State::new(0, 2);
+    let mut s2 = State::new(1, 2);
 
     let Output::Heartbeat(reqs) = s1.become_leader() else {
         return assert!(false, "don't know how to process the output");
@@ -26,7 +26,7 @@ fn test_2_servers_manual() {
     let ae: Event = ae.into();
     s2.next(&mut sn, ae);
     assert_eq!(s2.debug_log(), "[]");
-    assert_eq!(s1.debug_leader(), "0, [1, 1, 1, 1, 1], [0, 0, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "0, [1, 1], [0, 0]");
 
     let Output::ClientWaitFor(idx) = s1.next(&mut sn, Event::ClientCmd(AppEvent::Noop())) else {
         return assert!(false, "don't know how to process the output");
@@ -45,7 +45,7 @@ fn test_2_servers_manual() {
     let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
         return assert!(false, "don't know how to process the output");
     };
-    assert_eq!(s1.debug_leader(), "0, [1, 2, 1, 1, 1], [0, 1, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "1, [1, 2], [0, 1]");
 
     // drop a few AppendEntries calls: driver loop would normally trigger a CheckFollowers and
     // handle any results immediately when it gets the ClientWaitFor outputs.
@@ -60,7 +60,7 @@ fn test_2_servers_manual() {
     s1.become_candidate();
     // skip simulated voting…
     s1.become_leader();
-    assert_eq!(s1.debug_leader(), "0, [5, 5, 5, 5, 5], [0, 0, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "1, [5, 5], [0, 0]");
 
     // send heartbeats
     let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
@@ -78,7 +78,7 @@ fn test_2_servers_manual() {
     else {
         return assert!(false, "don't know how to process the output");
     };
-    assert_eq!(s1.debug_leader(), "0, [5, 4, 5, 5, 5], [0, 0, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "1, [5, 4], [0, 0]");
 
     // try again
     let req = find_req(1, reqs);
@@ -93,7 +93,7 @@ fn test_2_servers_manual() {
     else {
         return assert!(false, "don't know how to process the output");
     };
-    assert_eq!(s1.debug_leader(), "0, [5, 3, 5, 5, 5], [0, 0, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "1, [5, 3], [0, 0]");
 
     // try again
     let req = find_req(1, reqs);
@@ -109,7 +109,7 @@ fn test_2_servers_manual() {
     else {
         return assert!(false, "don't know how to process the output");
     };
-    assert_eq!(s1.debug_leader(), "0, [5, 2, 5, 5, 5], [0, 0, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "1, [5, 2], [0, 0]");
 
     // try again
     let req = find_req(1, reqs);
@@ -123,7 +123,7 @@ fn test_2_servers_manual() {
     let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
         return assert!(false, "don't know how to process the output");
     };
-    assert_eq!(s1.debug_leader(), "0, [5, 2, 5, 5, 5], [0, 1, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "1, [5, 2], [0, 1]");
 
     // keep going to get up to speed…
     let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
@@ -138,7 +138,7 @@ fn test_2_servers_manual() {
     let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
         return assert!(false, "don't know how to process the output");
     };
-    assert_eq!(s1.debug_leader(), "0, [5, 5, 5, 5, 5], [0, 4, 0, 0, 0]");
+    assert_eq!(s1.debug_leader(), "4, [5, 5], [0, 4]");
     assert_eq!(
         s2.debug_log(),
         "[(0, Noop), (0, Noop), (0, Noop), (0, Noop)]"
@@ -276,7 +276,9 @@ fn start_net_and_states<'scope, 'env>(
 fn test_many_auto() {
     let test_wait = Duration::from_millis(250);
 
-    let mut states: Vec<_> = (0..net::config::COUNT).map(State::new).collect();
+    let mut states: Vec<_> = (0..net::config::COUNT)
+        .map(|i| State::new(i, net::config::COUNT))
+        .collect();
     states[0].become_leader();
 
     thread::scope(|s| {
@@ -342,7 +344,7 @@ fn test_many_auto() {
 fn test_commits_with_majority_odd() {
     let test_wait = Duration::from_millis(350);
 
-    let mut states: Vec<_> = (0..5).map(State::new).collect();
+    let mut states: Vec<_> = (0..5).map(|i| State::new(i, 5)).collect();
     states[0].become_leader();
 
     thread::scope(|s| {
@@ -399,7 +401,7 @@ fn test_commits_with_majority_odd() {
 fn test_commits_with_majority_even() {
     let test_wait = Duration::from_millis(350);
 
-    let mut states: Vec<_> = (0..4).map(State::new).collect();
+    let mut states: Vec<_> = (0..4).map(|i| State::new(i, 4)).collect();
     states[0].become_leader();
 
     thread::scope(|s| {
@@ -435,10 +437,7 @@ fn test_commits_with_majority_even() {
     });
 
     // not all 6 messages were delivered, but we committed all of them
-    assert_eq!(
-        states[0].debug_leader(),
-        "6, [1, 7, 4, 7, 1], [0, 6, 3, 6, 0]"
-    );
+    assert_eq!(states[0].debug_leader(), "6, [1, 7, 4, 7], [0, 6, 3, 6]");
     for state in states {
         if state.id == 2 {
             assert_eq!(state.debug_log(), "[(0, Noop), (0, Noop), (0, Noop)]");
@@ -453,8 +452,8 @@ fn test_commits_with_majority_even() {
 
 #[test]
 fn candidate_converts_when_it_sees_a_leader() {
-    let mut s1 = State::new(0);
-    let mut s2 = State::new(1);
+    let mut s1 = State::new(0, 2);
+    let mut s2 = State::new(1, 2);
     let mut sn: Snapshot = Default::default();
     s1.become_candidate();
     s2.become_candidate();

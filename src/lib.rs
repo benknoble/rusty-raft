@@ -4,10 +4,6 @@ use std::io;
 
 pub mod net;
 
-fn has_majority(count: usize) -> bool {
-    count > net::config::COUNT / 2
-}
-
 #[derive(Debug)]
 pub struct State {
     // persistent state
@@ -26,6 +22,10 @@ pub struct State {
     t: Type,
     /// who am i?
     id: usize,
+    /// how many nodes are in the cluster?
+    /// DO NOT MUTATE
+    /// Assumes ∀ id, id ∈ cluster ⇔ id ∈ 0..cluster_size
+    cluster_size: usize,
 }
 
 // macros
@@ -72,7 +72,7 @@ enum Type {
 }
 
 impl State {
-    pub fn new(id: usize) -> Self {
+    pub fn new(id: usize, cluster_size: usize) -> Self {
         Self {
             current_term: 0,
             voted_for: None,
@@ -84,7 +84,16 @@ impl State {
             last_applied: 0,
             t: Type::Follower(),
             id,
+            cluster_size,
         }
+    }
+
+    fn has_majority(&self, count: usize) -> bool {
+        count > self.cluster_size / 2
+    }
+
+    fn ids(&self) -> impl Iterator<Item = usize> {
+        0..self.cluster_size
     }
 
     pub fn next<S: Snapshotter>(&mut self, #[expect(unused)] s: &mut S, e: Event) -> Output {
@@ -130,11 +139,11 @@ impl State {
 
     fn become_leader(&mut self) -> Output {
         self.t = Type::Leader {
-            next_index: vec![self.last_index() + 1; net::config::COUNT],
-            match_index: vec![0; net::config::COUNT],
+            next_index: vec![self.last_index() + 1; self.cluster_size],
+            match_index: vec![0; self.cluster_size],
         };
         Output::Heartbeat(
-            net::config::ids()
+            self.ids()
                 .map(|i| AppendEntries {
                     to: i,
                     term: self.current_term,
@@ -153,7 +162,7 @@ impl State {
     fn check_followers(&self) -> Output {
         match &self.t {
             Type::Leader { next_index, .. } => Output::AppendEntriesRequests(
-                net::config::ids()
+                self.ids()
                     .filter(|&i| i != self.id)
                     .map(|i| {
                         let next_index = next_index[i];
@@ -202,24 +211,33 @@ impl State {
 
     fn receive_vote(&mut self, from: usize, term: u64, vote_granted: bool) -> Output {
         check_term!(self, term);
-        match &mut self.t {
-            Type::Candidate { voters } => {
-                if vote_granted {
-                    assert!(
-                        voters.replace(from).is_none(),
-                        "voter {} voted more than once for {} this term",
-                        from,
-                        self.id
-                    );
-                }
-                if has_majority(voters.len()) {
-                    self.become_leader()
-                } else {
-                    Output::Ok()
-                }
-            }
-            // maybe we've converted since the request went out; ignore it
-            _ => Output::Ok(),
+        if vote_granted {
+            self.update_votes(from);
+        }
+        if self.has_majority_votes() {
+            self.become_leader()
+        } else {
+            Output::Ok()
+        }
+    }
+
+    /// no-op if not Candidate
+    fn update_votes(&mut self, from: usize) {
+        if let Type::Candidate { voters } = &mut self.t {
+            assert!(
+                voters.replace(from).is_none(),
+                "voter {} voted more than once for {} this term",
+                from,
+                self.id
+            );
+        }
+    }
+
+    /// false if not Candidate
+    fn has_majority_votes(&self) -> bool {
+        match &self.t {
+            Type::Candidate { voters } => self.has_majority(voters.len()),
+            _ => false,
         }
     }
 
@@ -259,11 +277,12 @@ impl State {
                     next_index[rep.from] = rep.match_index + 1;
                     match_index[rep.from] = rep.match_index;
                     self.commit_index = {
-                        let mut matches = Vec::with_capacity(net::config::COUNT);
+                        let mut matches = Vec::with_capacity(self.cluster_size);
                         matches.extend(&match_index[..self.id]);
                         matches.extend(&match_index[self.id + 1..]);
                         // the leader matches with itself up to the end
                         matches.push(self.last_index());
+                        assert_eq!(matches.len(), self.cluster_size);
                         // we can do better with quickselect, but let's assume the cluster is small
                         // enough that fancy algorithms have higher overhead.
                         matches.sort();
