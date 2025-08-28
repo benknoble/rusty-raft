@@ -130,8 +130,6 @@ impl State {
         self.t = Type::Candidate {
             voters: HashSet::new(),
         };
-        // who sends out the RPCs? if we had a Vec<Networkable>, we could, but we would also need
-        // some form of (fake?) parallelism
         Output::VoteRequests(
             self.ids_but_self()
                 .map(|i| VoteRequest {
