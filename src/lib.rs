@@ -79,36 +79,7 @@ impl State {
                 from,
                 term,
                 vote_granted,
-            } => {
-                if term > self.current_term {
-                    self.become_follower(term);
-                    return Output::Ok();
-                }
-                if term != self.current_term {
-                    // drop response
-                    return Output::Ok();
-                }
-                use Type::*;
-                match &mut self.t {
-                    Candidate { voters } => {
-                        if vote_granted {
-                            assert!(
-                                voters.replace(from).is_none(),
-                                "voter {} voted more than once for {} this term",
-                                from,
-                                self.id
-                            );
-                        }
-                        if has_majority(voters.len()) {
-                            self.become_leader()
-                        } else {
-                            Output::Ok()
-                        }
-                    }
-                    // maybe we've converted since the request went out; ignore it
-                    _ => Output::Ok(),
-                }
-            }
+            } => self.receive_vote(from, term, vote_granted),
             Event::ClientCmd(app_event) => {
                 /* This actually generates a "client waiting on commit for entry i" output.
                  *
@@ -272,6 +243,36 @@ impl State {
             // maybe we've converted before the most recent timeout; ignore it
             Type::Leader { .. } => Output::Ok(),
             _ => self.become_candidate(),
+        }
+    }
+
+    fn receive_vote(&mut self, from: usize, term: usize, vote_granted: bool) -> Output {
+        if term > self.current_term {
+            self.become_follower(term);
+            return Output::Ok();
+        }
+        if term != self.current_term {
+            // drop response
+            return Output::Ok();
+        }
+        match &mut self.t {
+            Type::Candidate { voters } => {
+                if vote_granted {
+                    assert!(
+                        voters.replace(from).is_none(),
+                        "voter {} voted more than once for {} this term",
+                        from,
+                        self.id
+                    );
+                }
+                if has_majority(voters.len()) {
+                    self.become_leader()
+                } else {
+                    Output::Ok()
+                }
+            }
+            // maybe we've converted since the request went out; ignore it
+            _ => Output::Ok(),
         }
     }
 
