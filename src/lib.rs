@@ -31,6 +31,7 @@ pub struct State {
 // macros
 
 /// if this doesn't return from a handler function, then self.current_term == term
+/// must be used carefully: it's not always OK to convert to a follower _and then drop the request_
 macro_rules! check_term {
     ($self:expr, $term:expr) => {
         if $term > $self.current_term {
