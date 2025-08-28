@@ -296,16 +296,15 @@ impl State {
 
     fn append_entries(&mut self, r: AppendEntries) -> AppendEntriesResponse {
         assert!(r.to == self.id);
-        if r.term > self.current_term {
-            self.become_follower(r.term);
-        }
         // TODO: save state before responding
         macro_rules! fail {
             () => {
                 return AppendEntriesResponse::fail(self.id, r.leader_id, self.current_term, 0)
             };
         }
-        if r.term < self.current_term {
+        if r.term > self.current_term {
+            self.become_follower(r.term);
+        } else if r.term < self.current_term {
             fail!();
         }
         match self.log.get(r.prev_log_index) {
