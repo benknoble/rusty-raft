@@ -135,9 +135,8 @@ impl State {
     // handler functions
 
     fn check_followers(&self) -> Output {
-        use Type::*;
         match &self.t {
-            Leader { next_index, .. } => Output::AppendEntriesRequests(
+            Type::Leader { next_index, .. } => Output::AppendEntriesRequests(
                 net::config::ids()
                     .filter(|&i| i != self.id)
                     .map(|i| {
