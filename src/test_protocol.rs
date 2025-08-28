@@ -182,7 +182,13 @@ fn driver(
             }
             None
         }
-        Output::VoteResponse(_) => unimplemented!("not needed in this test"),
+        Output::VoteResponse(rep) => {
+            if tx.send(rep.into()).is_err() {
+                Abort
+            } else {
+                None
+            }
+        }
         Output::ClientWaitFor(_) => Some(Event::CheckFollowers()),
         Output::AppendEntriesRequests(reqs) => {
             for req in reqs {
@@ -509,4 +515,34 @@ fn election_degenerate() {
         Type::Leader { .. } => true,
         _ => false,
     });
+}
+
+#[test]
+fn election_two() {
+    let test_wait = Duration::from_millis(25);
+    let mut states = (0..2).map(|i| State::new(i, 2)).collect();
+    thread::scope(|s| {
+        let test_txs = start_net_and_states(&s, &mut states);
+        test_txs[0]
+            .send(TestEvent::E(Event::ElectionTimeout()))
+            .expect("sent");
+
+        // flaky?
+        thread::sleep(test_wait);
+
+        // shutdown
+        for tx in test_txs {
+            tx.send(TestEvent::Quit).expect("sent");
+        }
+    });
+    assert!(match states[0].t {
+        Type::Leader { .. } => true,
+        _ => false,
+    });
+    for state in &states[1..] {
+        assert!(match state.t {
+            Type::Follower() => true,
+            _ => false,
+        });
+    }
 }
