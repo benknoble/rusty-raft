@@ -214,9 +214,13 @@ impl State {
         if r.term > self.current_term {
             self.become_follower(r.term);
         }
-        if r.term < self.current_term {
+        if r.term <= self.current_term {
             return VoteResponse::deny(self.id, self.current_term, r);
         }
+        assert!(match self.t {
+            Type::Leader { .. } => false,
+            Type::Candidate { .. } | Type::Follower() => true,
+        });
         let check_up_to_date = || match up_to_date(
             r.last_log_term,
             r.last_log_index,
