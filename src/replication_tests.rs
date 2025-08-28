@@ -256,7 +256,14 @@ fn start_net_and_states<'scope, 'env>(
             let Ok(r) = net_rx.recv() else {
                 break;
             };
-            if inboxes[r.to()].send(r.into()).is_err() {
+            // we may not have an inbox for everyone that the hosts generate messages for: the
+            // implementation currently hardcodes some things about net::config::COUNT, so hack
+            // around that
+            if inboxes
+                .get(r.to())
+                .map(|i| i.send(r.into()).is_err())
+                .unwrap_or(false)
+            {
                 break;
             }
         }
@@ -328,6 +335,119 @@ fn test_many_auto() {
             state.debug_log(),
             "[(0, Noop), (0, Noop), (0, Noop), (0, Noop), (0, Noop), (0, Noop)]"
         );
+    }
+}
+
+#[test]
+fn test_commits_with_majority_odd() {
+    let test_wait = Duration::from_millis(350);
+
+    let mut states: Vec<_> = (0..5).map(State::new).collect();
+    states[0].become_leader();
+
+    thread::scope(|s| {
+        let test_txs = start_net_and_states(&s, &mut states);
+
+        // send a few commands
+        for _ in 1..=3 {
+            test_txs[0]
+                .send(TestEvent::E(Event::ClientCmd(AppEvent::Noop())))
+                .expect("sent");
+        }
+
+        // flaky?
+        thread::sleep(test_wait);
+
+        // pause 2, 3
+        test_txs[2].send(TestEvent::Pause).expect("sent");
+        test_txs[3].send(TestEvent::Pause).expect("sent");
+
+        // send a few more commands
+        for _ in 1..=3 {
+            test_txs[0]
+                .send(TestEvent::E(Event::ClientCmd(AppEvent::Noop())))
+                .expect("sent");
+        }
+
+        // flaky?
+        thread::sleep(test_wait);
+
+        // shutdown
+        for tx in test_txs {
+            tx.send(TestEvent::Quit).expect("sent");
+        }
+    });
+
+    // not all 6 messages were delivered, but we committed all of them
+    assert_eq!(
+        states[0].debug_leader(),
+        "6, [1, 7, 4, 4, 7], [0, 6, 3, 3, 6]"
+    );
+    for state in states {
+        if state.id == 2 || state.id == 3 {
+            assert_eq!(state.debug_log(), "[(0, Noop), (0, Noop), (0, Noop)]");
+        } else {
+            assert_eq!(
+                state.debug_log(),
+                "[(0, Noop), (0, Noop), (0, Noop), (0, Noop), (0, Noop), (0, Noop)]"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_commits_with_majority_even() {
+    let test_wait = Duration::from_millis(350);
+
+    let mut states: Vec<_> = (0..4).map(State::new).collect();
+    states[0].become_leader();
+
+    thread::scope(|s| {
+        let test_txs = start_net_and_states(&s, &mut states);
+
+        // send a few commands
+        for _ in 1..=3 {
+            test_txs[0]
+                .send(TestEvent::E(Event::ClientCmd(AppEvent::Noop())))
+                .expect("sent");
+        }
+
+        // flaky?
+        thread::sleep(test_wait);
+
+        // pause 2
+        test_txs[2].send(TestEvent::Pause).expect("sent");
+
+        // send a few more commands
+        for _ in 1..=3 {
+            test_txs[0]
+                .send(TestEvent::E(Event::ClientCmd(AppEvent::Noop())))
+                .expect("sent");
+        }
+
+        // flaky?
+        thread::sleep(test_wait);
+
+        // shutdown
+        for tx in test_txs {
+            tx.send(TestEvent::Quit).expect("sent");
+        }
+    });
+
+    // not all 6 messages were delivered, but we committed all of them
+    assert_eq!(
+        states[0].debug_leader(),
+        "6, [1, 7, 4, 7, 1], [0, 6, 3, 6, 0]"
+    );
+    for state in states {
+        if state.id == 2 {
+            assert_eq!(state.debug_log(), "[(0, Noop), (0, Noop), (0, Noop)]");
+        } else {
+            assert_eq!(
+                state.debug_log(),
+                "[(0, Noop), (0, Noop), (0, Noop), (0, Noop), (0, Noop), (0, Noop)]"
+            );
+        }
     }
 }
 
