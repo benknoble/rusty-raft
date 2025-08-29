@@ -133,7 +133,7 @@ impl State {
     fn become_follower(&mut self, term: u64) {
         assert!(term >= self.current_term);
         self.t = Type::Follower {
-            election_deadline: jitter(self.timeout),
+            election_deadline: self.time.wrapping_add(jitter(self.timeout)),
         };
         self.current_term = term;
         self.voted_for = None;
@@ -145,7 +145,7 @@ impl State {
         self.t = Type::Candidate {
             // record our self-vote ;)
             voters: [self.id].into(),
-            election_deadline: jitter(self.timeout),
+            election_deadline: self.time.wrapping_add(jitter(self.timeout)),
         };
         if self.has_majority_votes() {
             // can only happen when cluster_size == 1, so it's OK to not send out the requests
@@ -170,7 +170,7 @@ impl State {
         self.t = Type::Leader {
             next_index: vec![self.last_index() + 1; self.cluster_size],
             match_index: vec![0; self.cluster_size],
-            heartbeat_deadline: vec![self.timeout / 4; self.cluster_size],
+            heartbeat_deadline: vec![self.time.wrapping_add(self.timeout / 4); self.cluster_size],
         };
         Output::AppendEntriesRequests(
             self.ids_but_self()
