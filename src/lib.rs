@@ -286,11 +286,23 @@ impl State {
             cmp::Ordering::Greater | cmp::Ordering::Equal => VoteResponse::grant(self.id, r),
             _ => VoteResponse::deny(self.id, self.current_term, r),
         };
-        match self.voted_for {
+        let resp = match self.voted_for {
             None => check_up_to_date(),
             Some(x) if x == r.from => check_up_to_date(),
             _ => VoteResponse::deny(self.id, self.current_term, r),
+        };
+
+        if resp.vote_granted {
+            match self.t {
+                Type::Follower {
+                    ref mut election_deadline,
+                } => *election_deadline = election_deadline.wrapping_add(jitter(self.timeout)),
+                // remember, we can "revote" for the same person we've already voted for, but
+                // candidates don't send vote requests to themselves
+                _ => unreachable!("Must be a follower to vote; candidates vote for themselves"),
+            };
         }
+        resp
     }
 
     fn receive_vote(&mut self, r: VoteResponse) -> Output {
