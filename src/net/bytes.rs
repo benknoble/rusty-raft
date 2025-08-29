@@ -29,7 +29,7 @@ impl std::str::FromStr for Message {
     type Err = serde_lexpr::error::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        serde_lexpr::from_str::<Message>(s)
+        serde_lexpr::from_str::<Self>(s)
     }
 }
 
