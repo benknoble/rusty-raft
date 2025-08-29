@@ -210,7 +210,7 @@ impl State {
                 let mut needs_update = Vec::with_capacity(self.cluster_size);
                 for (i, hb) in heartbeat_deadline.iter_mut().enumerate() {
                     if self.time >= *hb {
-                        *hb += self.timeout / 4;
+                        *hb = hb.wrapping_add(self.timeout / 4);
                         needs_update.push(i);
                     }
                 }
