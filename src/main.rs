@@ -133,8 +133,7 @@ fn manage_host(id: usize, addr: &str, host_id: usize, host_rx: mpsc::Receiver<ne
                     }
                 }
             }
-            Err(e) => {
-                eprintln!("{id}: can't connect to {host_id}: {e:?}");
+            Err(_) => {
                 let _drop_message = host_rx.try_recv();
             }
         }
