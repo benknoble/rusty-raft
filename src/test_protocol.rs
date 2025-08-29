@@ -613,3 +613,25 @@ fn election_many_one() {
         });
     }
 }
+
+#[test]
+fn election_many_many() {
+    let test_wait = Duration::from_millis(50);
+    let mut states = (0..5).map(|i| State::new(i, 5)).collect();
+    thread::scope(|s| {
+        let test_txs = start_net_and_states(&s, &mut states, Some(test_wait * 3));
+        for tx in test_txs.iter() {
+            tx.send(TestEvent::E(Event::ElectionTimeout()))
+                .expect("sent");
+        }
+
+        // flaky?
+        thread::sleep(test_wait);
+
+        // shutdown
+        for tx in test_txs {
+            tx.send(TestEvent::Quit).expect("sent");
+        }
+    });
+    // no assertions; just check we don't break an internal invariant
+}
