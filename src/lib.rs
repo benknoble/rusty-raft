@@ -95,7 +95,7 @@ impl State {
             commit_index: 0,
             last_applied: 0,
             t: Type::Follower {
-                election_deadline: timeout,
+                election_deadline: jitter(timeout),
             },
             id,
             cluster_size,
@@ -135,7 +135,7 @@ impl State {
     fn become_follower(&mut self, term: u64) {
         assert!(term >= self.current_term);
         self.t = Type::Follower {
-            election_deadline: self.timeout,
+            election_deadline: jitter(self.timeout),
         };
         self.current_term = term;
         self.voted_for = None;
@@ -147,7 +147,7 @@ impl State {
         self.t = Type::Candidate {
             // record our self-vote ;)
             voters: [self.id].into(),
-            election_deadline: self.timeout,
+            election_deadline: jitter(self.timeout),
         };
         if self.has_majority_votes() {
             // can only happen when cluster_size == 1, so it's OK to not send out the requests
@@ -192,7 +192,7 @@ impl State {
     // handler functions
 
     fn tick(&mut self) -> Output {
-        self.time += 1;
+        self.time = self.time.wrapping_add(1);
         match self.t {
             Type::Follower { election_deadline }
             | Type::Candidate {
@@ -640,6 +640,14 @@ pub trait Snapshotter {
         C: AsRef<[u8]>;
 
     fn read<P: AsRef<std::path::Path>>(&mut self, path: P) -> io::Result<Vec<u8>>;
+}
+
+fn jitter(x: u64) -> u64 {
+    if x == 0 {
+        return 0;
+    }
+    let half = x / 2;
+    rand::random_range(half..(x.saturating_add(half)))
 }
 
 #[cfg(test)]
