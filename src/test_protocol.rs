@@ -274,7 +274,7 @@ fn driver(
 fn start_net_and_states<'scope, 'env>(
     s: &'scope thread::Scope<'scope, 'env>,
     states: &'scope mut Vec<State>,
-    election_timeout: Option<Duration>,
+    clock_tick: Option<Duration>,
 ) -> Vec<mpsc::Sender<TestEvent>> {
     let (net_tx, net_rx) = mpsc::channel();
     let mut test_txs = vec![];
@@ -286,15 +286,12 @@ fn start_net_and_states<'scope, 'env>(
         inboxes.push(inbox.clone());
         let net_tx = net_tx.clone();
         s.spawn(|| driver(state, rx, net_tx, test_rx));
-        let election_timeout = election_timeout;
-        if let Some(t) = election_timeout {
+        let clock_tick = clock_tick;
+        if let Some(t) = clock_tick {
             s.spawn(move || {
                 loop {
                     thread::sleep(t);
-                    // TODO: sends too many (or handler needs to be smarter): otherwise we trigger an
-                    // election when we don't need to (say, because we've just seen a heartbeat and should
-                    // restart our timer). The effect is that we reset leaders more often than we need!
-                    if inbox.send(Event::ElectionTimeout()).is_err() {
+                    if inbox.send(Event::Clock()).is_err() {
                         break;
                     }
                 }
