@@ -520,7 +520,7 @@ pub enum Output {
     AppendEntriesResponse(AppendEntriesResponse),
 }
 
-/// Some events are `crate::net::Request`s, but not all!
+/// Some events are `crate::net::Message`s, but not all!
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Event {
     Clock(),
