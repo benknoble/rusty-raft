@@ -191,10 +191,6 @@ impl State {
 
     fn tick(&mut self) -> Output {
         self.time = self.time.wrapping_add(1);
-        // pre-grab some data needed for the Leader case that can't be computed under the mutable
-        // borrow :/
-        let last_index = self.last_index();
-        let ids: Vec<_> = self.ids_but_self().collect();
         match &mut self.t {
             Type::Follower { election_deadline }
             | Type::Candidate {
@@ -208,46 +204,29 @@ impl State {
                 }
             }
             Type::Leader {
-                heartbeat_deadline,
-                next_index,
-                ..
+                heartbeat_deadline, ..
             } => {
-                Output::AppendEntriesRequests(
-                    ids.into_iter()
-                        .filter_map(|i| {
-                            let hb = &mut heartbeat_deadline[i];
-                            if self.time >= *hb {
-                                *hb += self.timeout / 4;
-                                let next_index = next_index[i];
-                                Some(AppendEntries {
-                                    to: i,
-                                    term: self.current_term,
-                                    leader_id: self.id,
-                                    prev_log_index: next_index - 1,
-                                    prev_log_term: self.log[next_index - 1].term,
-                                    commit: self.commit_index,
-                                    entries: if last_index >= next_index {
-                                        // needs update!
-                                        self.log[next_index..].into()
-                                    } else {
-                                        // heartbeat
-                                        vec![]
-                                    },
-                                })
-                            } else {
-                                None
-                            }
-                        })
-                        .collect(),
-                )
+                let mut needs_update = Vec::with_capacity(self.cluster_size);
+                for (i, hb) in heartbeat_deadline.iter_mut().enumerate() {
+                    if self.time >= *hb {
+                        *hb += self.timeout / 4;
+                        needs_update.push(i);
+                    }
+                }
+                Output::AppendEntriesRequests(self.append_entries_for(&needs_update))
             }
         }
     }
 
     fn check_followers(&self) -> Vec<AppendEntries> {
+        self.append_entries_for(&self.ids_but_self().collect::<Vec<_>>())
+    }
+
+    fn append_entries_for(&self, who: &[usize]) -> Vec<AppendEntries> {
         match &self.t {
             Type::Leader { next_index, .. } => self
                 .ids_but_self()
+                .filter(|i| who.contains(i))
                 .map(|i| {
                     let next_index = next_index[i];
                     AppendEntries {
@@ -267,8 +246,7 @@ impl State {
                     }
                 })
                 .collect(),
-            // drop it: we're no longer leader
-            _ => vec![],
+            _ => unimplemented!(),
         }
     }
 
