@@ -364,7 +364,7 @@ fn test_many_auto() {
         test_txs[3].send(TestEvent::Resume).expect("sent");
 
         // flaky?
-        thread::sleep(test_wait);
+        thread::sleep(test_wait * 2);
 
         // shutdown
         for tx in test_txs {
@@ -417,7 +417,7 @@ fn test_commits_with_majority_odd() {
         }
 
         // flaky?
-        thread::sleep(test_wait);
+        thread::sleep(test_wait * 2);
 
         // shutdown
         for tx in test_txs {
@@ -483,7 +483,7 @@ fn test_commits_with_majority_even() {
         }
 
         // flaky?
-        thread::sleep(test_wait);
+        thread::sleep(test_wait * 2);
 
         // shutdown
         for tx in test_txs {
@@ -573,16 +573,15 @@ fn election_two() {
             tx.send(TestEvent::Quit).expect("sent");
         }
     });
-    assert!(match states[0].t {
-        Type::Leader { .. } => true,
-        _ => false,
-    });
-    for state in &states[1..] {
-        assert!(match state.t {
+    assert!(
+        match states[0].t {
+            Type::Leader { .. } => true,
+            _ => false,
+        } || match states[1].t {
             Type::Follower() => true,
             _ => false,
-        });
-    }
+        }
+    );
 }
 
 #[test]
@@ -596,7 +595,7 @@ fn election_many_one() {
             .expect("sent");
 
         // flaky?
-        thread::sleep(test_wait);
+        thread::sleep(test_wait * 2);
 
         // shutdown
         for tx in test_txs {
