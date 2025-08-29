@@ -8,7 +8,7 @@ I like to make 3 terminals:
   install …`).
 - `./watch-cluster`: tail the debug logs
 - `./start-client <i>`: connect to a node. The leader accepts `AppEvents` in
-  S-expression notation, like `(Noop)`.
+  S-expression notation, like `(Noop)`, `(Set "key" "val")`, or `(Get . "key")`.
 
 "Durable storage" is in `<i>_data` in directory where the node runs. You can
 do `rm *_data` to wipe the cluster clean.
