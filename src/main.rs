@@ -23,7 +23,7 @@ fn main() -> Result<(), io::Error> {
 
     let debug = args.len() == 3;
 
-    let mut state = State::new(id, net::config::HOSTS.len(), 100_000);
+    let mut state = State::new(id, net::config::HOSTS.len(), 10_000);
     if debug {
         state.debug();
     }
