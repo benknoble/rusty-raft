@@ -191,12 +191,12 @@ impl State {
 
     fn tick(&mut self) -> Output {
         self.time = self.time.wrapping_add(1);
-        match &mut self.t {
+        match self.t {
             Type::Follower { election_deadline }
             | Type::Candidate {
                 election_deadline, ..
             } => {
-                if self.time >= *election_deadline {
+                if self.time >= election_deadline {
                     self.time = 0;
                     self.become_candidate()
                 } else {
@@ -204,7 +204,8 @@ impl State {
                 }
             }
             Type::Leader {
-                heartbeat_deadline, ..
+                ref mut heartbeat_deadline,
+                ..
             } => {
                 let mut needs_update = Vec::with_capacity(self.cluster_size);
                 for (i, hb) in heartbeat_deadline.iter_mut().enumerate() {
