@@ -535,12 +535,13 @@ fn candidate_converts_when_it_sees_a_leader() {
 
 #[test]
 fn election_degenerate() {
-    let mut states = vec![State::new(0, 1, 100)];
+    let clock = Duration::from_millis(30);
+    let timeout = 10u32;
+    let mut states = vec![State::new(0, 1, timeout.into())];
     thread::scope(|s| {
-        let test_txs = start_net_and_states(&s, &mut states, Some(Duration::from_millis(25)));
-        test_txs[0]
-            .send(TestEvent::E(Event::ElectionTimeout()))
-            .expect("sent");
+        let test_txs = start_net_and_states(&s, &mut states, Some(clock));
+        // wait for a timeout + a few extra ticks
+        thread::sleep(timeout * clock + (timeout / 2 * clock));
         // shutdown
         for tx in test_txs {
             tx.send(TestEvent::Quit).expect("sent");
