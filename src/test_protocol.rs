@@ -19,7 +19,7 @@ fn test_2_servers_manual() {
     let mut s2 = State::new(1, 2, 10);
 
     let Output::AppendEntriesRequests(reqs) = s1.become_leader() else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     let req = find_req(1, reqs);
     let ae: net::Message = req.into();
@@ -30,18 +30,18 @@ fn test_2_servers_manual() {
 
     let Output::ClientWaitFor(idx, reqs) = s1.next(&mut sn, Event::ClientCmd(AppEvent::Noop()))
     else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     assert_eq!(idx, 1);
     let req = find_req(1, reqs);
     let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     assert!(rep.success);
     assert_eq!(s2.debug_log(), "[(0, Noop)]");
     let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     assert_eq!(s1.debug_leader(), "1, [1, 2], [0, 1]");
 
@@ -75,14 +75,14 @@ fn test_2_servers_manual() {
     let req = find_req(1, reqs);
     let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     // fail! missing entries
     assert!(!rep.success);
     // handle failure
     let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Message::from(rep).into())
     else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     assert_eq!(s1.debug_leader(), "1, [5, 4], [0, 0]");
 
@@ -90,14 +90,14 @@ fn test_2_servers_manual() {
     let req = find_req(1, reqs);
     let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     // fail! still missing entries
     assert!(!rep.success);
     // handle failure
     let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Message::from(rep).into())
     else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     assert_eq!(s1.debug_leader(), "1, [5, 3], [0, 0]");
 
@@ -105,7 +105,7 @@ fn test_2_servers_manual() {
     let req = find_req(1, reqs);
     let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     // fail! still missing entries
     assert!(!rep.success);
@@ -113,7 +113,7 @@ fn test_2_servers_manual() {
     // handle failure
     let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, net::Message::from(rep).into())
     else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     assert_eq!(s1.debug_leader(), "1, [5, 2], [0, 0]");
 
@@ -121,13 +121,13 @@ fn test_2_servers_manual() {
     let req = find_req(1, reqs);
     let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     // success!
     assert!(rep.success);
     // handle it
     let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     assert_eq!(s1.debug_leader(), "1, [5, 2], [0, 1]");
 
@@ -146,11 +146,11 @@ fn test_2_servers_manual() {
     let req = find_req(1, reqs);
     let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     assert!(rep.success);
     let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     // not committed yet: these entries are from the previous term, and we _cannot_ commit those
     // (see Figure 8)
@@ -176,11 +176,11 @@ fn test_2_servers_manual() {
     let req = find_req(1, reqs);
     let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     assert!(rep.success);
     let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
     // NB we don't update next_index on the leader ;)
     assert_eq!(s1.debug_leader(), "5, [5, 6], [0, 5]");
@@ -191,7 +191,7 @@ fn test_2_servers_manual() {
 
     // tick the clock and apply the entries
     let Output::Ok() = s1.next(&mut sn, Event::Clock()) else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
 }
 
@@ -548,7 +548,7 @@ fn candidate_converts_when_it_sees_a_leader() {
     // assume s2 wins election…
 
     let Output::AppendEntriesRequests(reqs) = s2.become_leader() else {
-        return assert!(false, "don't know how to process the output");
+        panic!("don't know how to process the output")
     };
 
     let req = find_req(0, reqs);
