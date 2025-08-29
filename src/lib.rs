@@ -27,6 +27,9 @@ pub struct State {
     /// DO NOT MUTATE
     /// Assumes ∀ id, id ∈ cluster ⇔ id ∈ 0..cluster_size
     cluster_size: usize,
+    /// base election timeout value
+    /// DO NOT MUTATE
+    timeout: u64,
 }
 
 // macros
@@ -61,8 +64,11 @@ impl LogEntry {
 
 #[derive(Debug, Deserialize, Serialize)]
 enum Type {
-    Follower(),
+    Follower {
+        election_deadline: u64,
+    },
     Candidate {
+        election_deadline: u64,
         voters: HashSet<usize>,
     },
     Leader {
@@ -70,11 +76,13 @@ enum Type {
         next_index: Vec<usize>,
         /// for each host h, match_index[h] is the highest index known to be replicated on h
         match_index: Vec<usize>,
+        /// for each host h, heartbeat_deadline[h] is when we should send an idle message to h
+        heartbeat_deadline: Vec<u64>,
     },
 }
 
 impl State {
-    pub fn new(id: usize, cluster_size: usize) -> Self {
+    pub fn new(id: usize, cluster_size: usize, timeout: u64) -> Self {
         assert!(cluster_size > 0);
         Self {
             current_term: 0,
@@ -85,9 +93,12 @@ impl State {
             state: AppState {},
             commit_index: 0,
             last_applied: 0,
-            t: Type::Follower(),
+            t: Type::Follower {
+                election_deadline: timeout,
+            },
             id,
             cluster_size,
+            timeout,
         }
     }
 
@@ -120,7 +131,9 @@ impl State {
 
     fn become_follower(&mut self, term: u64) {
         assert!(term >= self.current_term);
-        self.t = Type::Follower();
+        self.t = Type::Follower {
+            election_deadline: self.timeout,
+        };
         self.current_term = term;
         self.voted_for = None;
     }
@@ -131,6 +144,7 @@ impl State {
         self.t = Type::Candidate {
             // record our self-vote ;)
             voters: [self.id].into(),
+            election_deadline: self.timeout,
         };
         if self.has_majority_votes() {
             // can only happen when cluster_size == 1, so it's OK to not send out the requests
@@ -155,6 +169,7 @@ impl State {
         self.t = Type::Leader {
             next_index: vec![self.last_index() + 1; self.cluster_size],
             match_index: vec![0; self.cluster_size],
+            heartbeat_deadline: vec![self.timeout / 4; self.cluster_size],
         };
         Output::AppendEntriesRequests(
             self.ids_but_self()
@@ -234,7 +249,7 @@ impl State {
         }
         assert!(match self.t {
             Type::Leader { .. } => false,
-            Type::Candidate { .. } | Type::Follower() => true,
+            Type::Candidate { .. } | Type::Follower { .. } => true,
         });
         let check_up_to_date = || match up_to_date(
             r.last_log_term,
@@ -267,7 +282,7 @@ impl State {
 
     /// no-op if not Candidate
     fn update_votes(&mut self, from: usize) {
-        if let Type::Candidate { voters } = &mut self.t {
+        if let Type::Candidate { voters, .. } = &mut self.t {
             assert!(
                 voters.replace(from).is_none(),
                 "voter {} voted more than once for {} this term",
@@ -280,7 +295,7 @@ impl State {
     /// false if not Candidate
     fn has_majority_votes(&self) -> bool {
         match &self.t {
-            Type::Candidate { voters } => self.has_majority(voters.len()),
+            Type::Candidate { voters, .. } => self.has_majority(voters.len()),
             _ => false,
         }
     }
@@ -319,6 +334,7 @@ impl State {
             Type::Leader {
                 next_index,
                 match_index,
+                ..
             } => {
                 if rep.success {
                     next_index[rep.from] = rep.match_index + 1;
@@ -451,6 +467,7 @@ impl State {
             Type::Leader {
                 next_index,
                 match_index,
+                ..
             } => format!("{}, {next_index:?}, {match_index:?}", self.commit_index),
             _ => unimplemented!(),
         }

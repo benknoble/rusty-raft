@@ -22,7 +22,7 @@ fn test_append_entries() {
         LogEntry::new(3, Noop()),
     ];
 
-    let mut s = State::new(0, 1);
+    let mut s = State::new(0, 1, 0);
     s.log.extend(base.clone());
     s.current_term = 3;
     // "normal" heartbeat append

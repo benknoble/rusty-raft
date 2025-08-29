@@ -15,8 +15,8 @@ fn find_req(id: usize, reqs: Vec<AppendEntries>) -> AppendEntries {
 #[test]
 fn test_2_servers_manual() {
     let mut sn: Snapshot = Default::default();
-    let mut s1 = State::new(0, 2);
-    let mut s2 = State::new(1, 2);
+    let mut s1 = State::new(0, 2, 0);
+    let mut s2 = State::new(1, 2, 0);
 
     let Output::AppendEntriesRequests(reqs) = s1.become_leader() else {
         return assert!(false, "don't know how to process the output");
@@ -322,7 +322,7 @@ fn test_many_auto() {
     let test_wait = Duration::from_millis(25);
 
     let mut states: Vec<_> = (0..net::config::COUNT)
-        .map(|i| State::new(i, net::config::COUNT))
+        .map(|i| State::new(i, net::config::COUNT, 0))
         .collect();
     states[0].become_leader();
 
@@ -389,7 +389,7 @@ fn test_many_auto() {
 fn test_commits_with_majority_odd() {
     let test_wait = Duration::from_millis(50);
 
-    let mut states: Vec<_> = (0..5).map(|i| State::new(i, 5)).collect();
+    let mut states: Vec<_> = (0..5).map(|i| State::new(i, 5, 0)).collect();
     states[0].become_leader();
 
     thread::scope(|s| {
@@ -456,7 +456,7 @@ fn test_commits_with_majority_odd() {
 fn test_commits_with_majority_even() {
     let test_wait = Duration::from_millis(50);
 
-    let mut states: Vec<_> = (0..4).map(|i| State::new(i, 4)).collect();
+    let mut states: Vec<_> = (0..4).map(|i| State::new(i, 4, 0)).collect();
     states[0].become_leader();
 
     thread::scope(|s| {
@@ -515,8 +515,8 @@ fn test_commits_with_majority_even() {
 
 #[test]
 fn candidate_converts_when_it_sees_a_leader() {
-    let mut s1 = State::new(0, 2);
-    let mut s2 = State::new(1, 2);
+    let mut s1 = State::new(0, 2, 0);
+    let mut s2 = State::new(1, 2, 0);
     let mut sn: Snapshot = Default::default();
     s1.become_candidate();
     s2.become_candidate();
@@ -531,14 +531,14 @@ fn candidate_converts_when_it_sees_a_leader() {
     let ae: net::Message = req.into();
     s1.next(&mut sn, ae.into());
     assert!(match s1.t {
-        Type::Follower() => true,
+        Type::Follower { .. } => true,
         _ => false,
     });
 }
 
 #[test]
 fn election_degenerate() {
-    let mut states = vec![State::new(0, 1)];
+    let mut states = vec![State::new(0, 1, 100)];
     thread::scope(|s| {
         let test_txs = start_net_and_states(&s, &mut states, Some(Duration::from_millis(25)));
         test_txs[0]
@@ -558,7 +558,7 @@ fn election_degenerate() {
 #[test]
 fn election_two() {
     let test_wait = Duration::from_millis(50);
-    let mut states = (0..2).map(|i| State::new(i, 2)).collect();
+    let mut states = (0..2).map(|i| State::new(i, 2, 200)).collect();
     thread::scope(|s| {
         let test_txs = start_net_and_states(&s, &mut states, Some(test_wait * 3));
         test_txs[0]
@@ -578,7 +578,7 @@ fn election_two() {
             Type::Leader { .. } => true,
             _ => false,
         } || match states[1].t {
-            Type::Follower() => true,
+            Type::Follower { .. } => true,
             _ => false,
         }
     );
@@ -587,7 +587,7 @@ fn election_two() {
 #[test]
 fn election_many_one() {
     let test_wait = Duration::from_millis(50);
-    let mut states = (0..5).map(|i| State::new(i, 5)).collect();
+    let mut states = (0..5).map(|i| State::new(i, 5, 200)).collect();
     thread::scope(|s| {
         let test_txs = start_net_and_states(&s, &mut states, Some(test_wait * 5));
         test_txs[0]
@@ -608,7 +608,7 @@ fn election_many_one() {
     });
     for state in &states[1..] {
         assert!(match state.t {
-            Type::Follower() => true,
+            Type::Follower { .. } => true,
             _ => false,
         });
     }
@@ -617,7 +617,7 @@ fn election_many_one() {
 #[test]
 fn election_many_many() {
     let test_wait = Duration::from_millis(50);
-    let mut states = (0..5).map(|i| State::new(i, 5)).collect();
+    let mut states = (0..5).map(|i| State::new(i, 5, 200)).collect();
     thread::scope(|s| {
         let test_txs = start_net_and_states(&s, &mut states, Some(test_wait * 3));
         for tx in test_txs.iter() {
