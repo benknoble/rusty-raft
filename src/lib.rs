@@ -182,6 +182,7 @@ impl State {
             match_index: vec![0; self.cluster_size],
             heartbeat_deadline: vec![self.time.wrapping_add(self.timeout / 4); self.cluster_size],
         };
+        self.do_debug();
         Output::AppendEntriesRequests(
             self.ids_but_self()
                 .map(|i| AppendEntries {
