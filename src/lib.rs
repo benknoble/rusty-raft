@@ -119,7 +119,6 @@ impl State {
     pub fn next<S: Snapshotter>(&mut self, s: &mut S, e: Event) -> Output {
         match e {
             Event::Clock() => self.tick(),
-            Event::ApplyEntries() => self.apply_entries(),
             Event::VoteRequest(req) => {
                 let _ = s.write(format!("{}_data", self.id), self.to_bytes());
                 Output::VoteResponse(self.vote(req))
@@ -204,7 +203,7 @@ impl State {
                     self.time = 0;
                     self.become_candidate()
                 } else {
-                    Output::Ok()
+                    self.apply_entries()
                 }
             }
             Type::Leader {
@@ -218,7 +217,11 @@ impl State {
                         needs_update.push(i);
                     }
                 }
-                Output::AppendEntriesRequests(self.append_entries_for(&needs_update))
+                if needs_update.is_empty() {
+                    self.apply_entries()
+                } else {
+                    Output::AppendEntriesRequests(self.append_entries_for(&needs_update))
+                }
             }
         }
     }
@@ -256,7 +259,6 @@ impl State {
     }
 
     fn apply_entries(&mut self) -> Output {
-        #[expect(unreachable_code)]
         while self.commit_index > self.last_applied {
             self.last_applied += 1;
             // TODO: do something with this output for clients (only if leader…)
@@ -522,7 +524,6 @@ pub enum Output {
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Event {
     Clock(),
-    ApplyEntries(),
     AppendEntriesRequest(AppendEntries),
     AppendEntriesResponse(AppendEntriesResponse),
     VoteRequest(VoteRequest),
@@ -628,7 +629,7 @@ impl AppState {
     fn next(&mut self, e: AppEvent) -> AppOutput {
         use AppEvent::*;
         match e {
-            Noop() => todo!(),
+            Noop() => AppOutput::Ok(),
         }
     }
 }
@@ -639,7 +640,9 @@ pub enum AppEvent {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-pub enum AppOutput {}
+pub enum AppOutput {
+    Ok(),
+}
 
 // Abstractions
 

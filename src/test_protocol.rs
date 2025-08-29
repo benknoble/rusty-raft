@@ -15,8 +15,8 @@ fn find_req(id: usize, reqs: Vec<AppendEntries>) -> AppendEntries {
 #[test]
 fn test_2_servers_manual() {
     let mut sn: Snapshot = Default::default();
-    let mut s1 = State::new(0, 2, 0);
-    let mut s2 = State::new(1, 2, 0);
+    let mut s1 = State::new(0, 2, 10);
+    let mut s2 = State::new(1, 2, 10);
 
     let Output::AppendEntriesRequests(reqs) = s1.become_leader() else {
         return assert!(false, "don't know how to process the output");
@@ -61,9 +61,17 @@ fn test_2_servers_manual() {
     assert_eq!(s1.debug_leader(), "1, [5, 5], [0, 0]");
 
     // send heartbeats
-    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::Clock()) else {
-        return assert!(false, "don't know how to process the output");
-    };
+    let reqs;
+    loop {
+        match s1.next(&mut sn, Event::Clock()) {
+            Output::Ok() => continue,
+            Output::AppendEntriesRequests(inner) => {
+                reqs = inner;
+                break;
+            }
+            _ => assert!(false, "don't know how to process the output"),
+        }
+    }
     let req = find_req(1, reqs);
     let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
@@ -124,9 +132,17 @@ fn test_2_servers_manual() {
     assert_eq!(s1.debug_leader(), "1, [5, 2], [0, 1]");
 
     // keep going to get up to speed…
-    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::Clock()) else {
-        return assert!(false, "don't know how to process the output");
-    };
+    let reqs;
+    loop {
+        match s1.next(&mut sn, Event::Clock()) {
+            Output::Ok() => continue,
+            Output::AppendEntriesRequests(inner) => {
+                reqs = inner;
+                break;
+            }
+            _ => assert!(false, "don't know how to process the output"),
+        }
+    }
     let req = find_req(1, reqs);
     let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
@@ -146,9 +162,17 @@ fn test_2_servers_manual() {
 
     // replicate a new entry from our term, committing everything
     s1.next(&mut sn, Event::ClientCmd(AppEvent::Noop()));
-    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::Clock()) else {
-        return assert!(false, "don't know how to process the output");
-    };
+    let reqs;
+    loop {
+        match s1.next(&mut sn, Event::Clock()) {
+            Output::Ok() => continue,
+            Output::AppendEntriesRequests(inner) => {
+                reqs = inner;
+                break;
+            }
+            _ => assert!(false, "don't know how to process the output"),
+        }
+    }
     let req = find_req(1, reqs);
     let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
@@ -164,6 +188,11 @@ fn test_2_servers_manual() {
         s2.debug_log(),
         "[(0, Noop), (0, Noop), (0, Noop), (0, Noop), (1, Noop)]"
     );
+
+    // tick the clock and apply the entries
+    let Output::Ok() = s1.next(&mut sn, Event::Clock()) else {
+        return assert!(false, "don't know how to process the output");
+    };
 }
 
 use std::sync::*;
