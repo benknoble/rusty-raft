@@ -25,6 +25,14 @@ impl State {
     }
 }
 
+impl Event {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = vec![];
+        serde_lexpr::to_writer(&mut buf, self).expect("serialization error");
+        buf
+    }
+}
+
 impl std::str::FromStr for Message {
     type Err = serde_lexpr::error::Error;
 
@@ -107,5 +115,13 @@ where
 impl Output {
     pub fn to_bytes(&self) -> Vec<u8> {
         serde_lexpr::to_vec(self).expect("serialization error")
+    }
+}
+
+impl std::str::FromStr for AppEvent {
+    type Err = serde_lexpr::error::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        serde_lexpr::from_str::<Self>(s)
     }
 }
