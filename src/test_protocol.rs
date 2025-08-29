@@ -555,16 +555,12 @@ fn election_degenerate() {
 
 #[test]
 fn election_two() {
-    let test_wait = Duration::from_millis(50);
-    let mut states = (0..2).map(|i| State::new(i, 2, 200)).collect();
+    let clock = Duration::from_millis(30);
+    let timeout = 10u32;
+    let mut states = (0..2).map(|i| State::new(i, 2, timeout.into())).collect();
     thread::scope(|s| {
-        let test_txs = start_net_and_states(&s, &mut states, Some(test_wait * 3));
-        test_txs[0]
-            .send(TestEvent::E(Event::ElectionTimeout()))
-            .expect("sent");
-
-        // flaky?
-        thread::sleep(test_wait);
+        let test_txs = start_net_and_states(&s, &mut states, Some(clock));
+        thread::sleep(timeout * clock + (timeout / 2 * clock));
 
         // shutdown
         for tx in test_txs {
