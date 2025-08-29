@@ -138,10 +138,33 @@ fn test_2_servers_manual() {
     let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
         return assert!(false, "don't know how to process the output");
     };
+    // not committed yet: these entries are from the previous term, and we _cannot_ commit those
+    // (see Figure 8)
     assert_eq!(s1.debug_leader(), "1, [5, 5], [0, 4]");
     assert_eq!(
         s2.debug_log(),
         "[(0, Noop), (0, Noop), (0, Noop), (0, Noop)]"
+    );
+
+    // replicate a new entry from our term, committing everything
+    s1.next(&mut sn, Event::ClientCmd(AppEvent::Noop()));
+    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
+        return assert!(false, "don't know how to process the output");
+    };
+    let req = find_req(1, reqs);
+    let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
+    else {
+        return assert!(false, "don't know how to process the output");
+    };
+    assert!(rep.success);
+    let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
+        return assert!(false, "don't know how to process the output");
+    };
+    // NB we don't update next_index on the leader ;)
+    assert_eq!(s1.debug_leader(), "5, [5, 6], [0, 5]");
+    assert_eq!(
+        s2.debug_log(),
+        "[(0, Noop), (0, Noop), (0, Noop), (0, Noop), (1, Noop)]"
     );
 }
 
