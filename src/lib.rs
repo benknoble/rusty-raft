@@ -407,8 +407,8 @@ impl State {
                     };
                     Output::Ok()
                 } else {
-                    next_index[rep.from] -= 1;
-                    let prev_index = next_index[rep.from] - 1;
+                    next_index[rep.from] = next_index[rep.from].saturating_sub(1);
+                    let prev_index = next_index[rep.from].saturating_sub(1);
                     Output::AppendEntriesRequests(vec![AppendEntries {
                         to: rep.from,
                         term: self.current_term,
