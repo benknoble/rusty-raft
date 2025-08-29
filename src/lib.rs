@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::cmp;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io;
 
 pub mod net;
@@ -93,7 +93,9 @@ impl State {
             // a dummy entry at 0: supports 1-based indexing as in the paper.
             // *term needs to be 0:* empty log cases grab this term.
             log: vec![LogEntry::new(0, AppEvent::Noop())],
-            state: AppState {},
+            state: AppState {
+                map: Default::default(),
+            },
             commit_index: 0,
             last_applied: 0,
             t: Type::Follower {
@@ -648,13 +650,24 @@ fn up_to_date(term1: u64, index1: usize, term2: u64, index2: usize) -> cmp::Orde
 // App
 
 #[derive(Default, Debug)]
-pub struct AppState {}
+pub struct AppState {
+    map: HashMap<String, String>,
+}
 
 impl AppState {
     fn next(&mut self, e: AppEvent) -> AppOutput {
         use AppEvent::*;
         match e {
             Noop() => AppOutput::Ok(),
+            Get(k) => AppOutput::Val(self.map.get(&k).cloned()),
+            Set(k, v) => {
+                self.map.insert(k, v);
+                AppOutput::Ok()
+            }
+            Delete(k) => {
+                self.map.remove(&k);
+                AppOutput::Ok()
+            }
         }
     }
 }
@@ -662,11 +675,15 @@ impl AppState {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum AppEvent {
     Noop(),
+    Get(String),
+    Set(String, String),
+    Delete(String),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum AppOutput {
     Ok(),
+    Val(Option<String>),
 }
 
 // Abstractions
