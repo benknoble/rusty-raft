@@ -138,7 +138,7 @@ fn test_2_servers_manual() {
     let Output::Ok() = s1.next(&mut sn, net::Message::from(rep).into()) else {
         return assert!(false, "don't know how to process the output");
     };
-    assert_eq!(s1.debug_leader(), "4, [5, 5], [0, 4]");
+    assert_eq!(s1.debug_leader(), "1, [5, 5], [0, 4]");
     assert_eq!(
         s2.debug_log(),
         "[(0, Noop), (0, Noop), (0, Noop), (0, Noop)]"
@@ -268,8 +268,7 @@ fn start_net_and_states<'scope, 'env>(
             thread::sleep(election_timeout);
             // TODO: sends too many (or handler needs to be smarter): otherwise we trigger an
             // election when we don't need to (say, because we've just seen a heartbeat and should
-            // restart our timer). The effect is that we try to move our commit_index backwards,
-            // yikes!
+            // restart our timer). The effect is that we reset leaders more often than we need!
             if inbox.send(Event::ElectionTimeout()).is_err() {
                 break;
             }

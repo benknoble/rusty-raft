@@ -336,8 +336,12 @@ impl State {
                         // in case cluster size is even: truncate. A majority will have that index.
                         let median_index = (matches.len() - 1) / 2;
                         let median = matches[median_index];
-                        assert!(median >= self.commit_index);
-                        median
+                        if median > self.commit_index && self.log[median].term == self.current_term
+                        {
+                            median
+                        } else {
+                            self.commit_index
+                        }
                     };
                     Output::Ok()
                 } else {
