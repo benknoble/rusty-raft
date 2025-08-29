@@ -193,7 +193,20 @@ impl State {
 
     fn tick(&mut self) -> Output {
         self.time += 1;
-        Output::Ok()
+        match self.t {
+            Type::Follower { election_deadline }
+            | Type::Candidate {
+                election_deadline, ..
+            } => {
+                if self.time >= election_deadline {
+                    self.time = 0;
+                    self.become_candidate()
+                } else {
+                    Output::Ok()
+                }
+            }
+            _ => Output::Ok(),
+        }
     }
 
     fn check_followers(&self) -> Output {
