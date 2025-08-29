@@ -127,7 +127,6 @@ impl State {
                 Output::AppendEntriesResponse(self.append_entries(req))
             }
             Event::AppendEntriesResponse(rep) => self.receive_append_entries_response(rep),
-            Event::CheckFollowers() => self.check_followers(),
         }
     }
 
@@ -192,48 +191,84 @@ impl State {
 
     fn tick(&mut self) -> Output {
         self.time = self.time.wrapping_add(1);
-        match self.t {
+        // pre-grab some data needed for the Leader case that can't be computed under the mutable
+        // borrow :/
+        let last_index = self.last_index();
+        let ids: Vec<_> = self.ids_but_self().collect();
+        match &mut self.t {
             Type::Follower { election_deadline }
             | Type::Candidate {
                 election_deadline, ..
             } => {
-                if self.time >= election_deadline {
+                if self.time >= *election_deadline {
                     self.time = 0;
                     self.become_candidate()
                 } else {
                     Output::Ok()
                 }
             }
-            _ => Output::Ok(),
+            Type::Leader {
+                heartbeat_deadline,
+                next_index,
+                ..
+            } => {
+                Output::AppendEntriesRequests(
+                    ids.into_iter()
+                        .filter_map(|i| {
+                            let hb = &mut heartbeat_deadline[i];
+                            if self.time >= *hb {
+                                *hb += self.timeout / 4;
+                                let next_index = next_index[i];
+                                Some(AppendEntries {
+                                    to: i,
+                                    term: self.current_term,
+                                    leader_id: self.id,
+                                    prev_log_index: next_index - 1,
+                                    prev_log_term: self.log[next_index - 1].term,
+                                    commit: self.commit_index,
+                                    entries: if last_index >= next_index {
+                                        // needs update!
+                                        self.log[next_index..].into()
+                                    } else {
+                                        // heartbeat
+                                        vec![]
+                                    },
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                )
+            }
         }
     }
 
-    fn check_followers(&self) -> Output {
+    fn check_followers(&self) -> Vec<AppendEntries> {
         match &self.t {
-            Type::Leader { next_index, .. } => Output::AppendEntriesRequests(
-                self.ids_but_self()
-                    .map(|i| {
-                        let next_index = next_index[i];
-                        AppendEntries {
-                            to: i,
-                            term: self.current_term,
-                            leader_id: self.id,
-                            prev_log_index: next_index - 1,
-                            prev_log_term: self.log[next_index - 1].term,
-                            commit: self.commit_index,
-                            entries: if self.last_index() >= next_index {
-                                // needs update!
-                                self.log[next_index..].into()
-                            } else {
-                                // heartbeat
-                                vec![]
-                            },
-                        }
-                    })
-                    .collect(),
-            ),
+            Type::Leader { next_index, .. } => self
+                .ids_but_self()
+                .map(|i| {
+                    let next_index = next_index[i];
+                    AppendEntries {
+                        to: i,
+                        term: self.current_term,
+                        leader_id: self.id,
+                        prev_log_index: next_index - 1,
+                        prev_log_term: self.log[next_index - 1].term,
+                        commit: self.commit_index,
+                        entries: if self.last_index() >= next_index {
+                            // needs update!
+                            self.log[next_index..].into()
+                        } else {
+                            // heartbeat
+                            vec![]
+                        },
+                    }
+                })
+                .collect(),
             // drop it: we're no longer leader
-            _ => Output::Ok(),
+            _ => vec![],
         }
     }
 
@@ -319,13 +354,6 @@ impl State {
          * replicated. That can delay responses, though, so it's on a short timeout. Once it sees a
          * new entry, it should quickly queue an event to send that entry out. Can this be the
          * _same_ as the heartbeat mechanism? TODO
-         * Heartbeat loop per follower:
-         *      - hey, time to fire off an AE again!
-         *      - might be empty, might not
-         *      - no need to reset timer: just send more than strictly necessary
-         * Right now, the only way to trigger a heartbeat is to, uh, send CheckFollowers (which we
-         * can do in a single timeout loop). If that doesn't work out, might need a Clock tick +
-         * timeout-per-follower.
          *
          * However, we know nobody has seen this entry… so when we get a "waiting on commit," we
          * automatically queue up AppendEntries for all hosts. It's the driver loop's job to do so.
@@ -333,7 +361,7 @@ impl State {
         match self.t {
             Type::Leader { .. } => {
                 self.log.push(LogEntry::new(self.current_term, e));
-                Output::ClientWaitFor(self.last_index())
+                Output::ClientWaitFor(self.last_index(), self.check_followers())
             }
             _ => todo!("should forward leader id (needs more state)"),
         }
@@ -492,7 +520,7 @@ pub enum Output {
     /// enough details to make a RequestVote RPC
     VoteRequests(Vec<VoteRequest>),
     VoteResponse(VoteResponse),
-    ClientWaitFor(usize),
+    ClientWaitFor(usize, Vec<AppendEntries>),
     AppendEntriesRequests(Vec<AppendEntries>),
     AppendEntriesResponse(AppendEntriesResponse),
 }
@@ -502,7 +530,6 @@ pub enum Output {
 pub enum Event {
     Clock(),
     ApplyEntries(),
-    CheckFollowers(),
     AppendEntriesRequest(AppendEntries),
     AppendEntriesResponse(AppendEntriesResponse),
     VoteRequest(VoteRequest),

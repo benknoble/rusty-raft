@@ -28,13 +28,11 @@ fn test_2_servers_manual() {
     assert_eq!(s2.debug_log(), "[]");
     assert_eq!(s1.debug_leader(), "0, [1, 1], [0, 0]");
 
-    let Output::ClientWaitFor(idx) = s1.next(&mut sn, Event::ClientCmd(AppEvent::Noop())) else {
+    let Output::ClientWaitFor(idx, reqs) = s1.next(&mut sn, Event::ClientCmd(AppEvent::Noop()))
+    else {
         return assert!(false, "don't know how to process the output");
     };
     assert_eq!(idx, 1);
-    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
-        return assert!(false, "don't know how to process the output");
-    };
     let req = find_req(1, reqs);
     let Output::AppendEntriesResponse(rep) = s2.next(&mut sn, net::Message::from(req).into())
     else {
@@ -47,8 +45,8 @@ fn test_2_servers_manual() {
     };
     assert_eq!(s1.debug_leader(), "1, [1, 2], [0, 1]");
 
-    // drop a few AppendEntries calls: driver loop would normally trigger a CheckFollowers and
-    // handle any results immediately when it gets the ClientWaitFor outputs.
+    // drop a few AppendEntries calls: driver loop would normally trigger some requests immediately
+    // when it gets the ClientWaitFor outputs.
     for _ in 1..=3 {
         s1.next(&mut sn, Event::ClientCmd(AppEvent::Noop()));
     }
@@ -63,7 +61,7 @@ fn test_2_servers_manual() {
     assert_eq!(s1.debug_leader(), "1, [5, 5], [0, 0]");
 
     // send heartbeats
-    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
+    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::Clock()) else {
         return assert!(false, "don't know how to process the output");
     };
     let req = find_req(1, reqs);
@@ -126,7 +124,7 @@ fn test_2_servers_manual() {
     assert_eq!(s1.debug_leader(), "1, [5, 2], [0, 1]");
 
     // keep going to get up to speed…
-    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
+    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::Clock()) else {
         return assert!(false, "don't know how to process the output");
     };
     let req = find_req(1, reqs);
@@ -148,7 +146,7 @@ fn test_2_servers_manual() {
 
     // replicate a new entry from our term, committing everything
     s1.next(&mut sn, Event::ClientCmd(AppEvent::Noop()));
-    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::CheckFollowers()) else {
+    let Output::AppendEntriesRequests(reqs) = s1.next(&mut sn, Event::Clock()) else {
         return assert!(false, "don't know how to process the output");
     };
     let req = find_req(1, reqs);
@@ -190,12 +188,12 @@ fn driver(
 
     enum Cont {
         None,
-        Some(Event),
+        Some(Output),
         Abort,
     }
     use Cont::*;
 
-    let mut handle_event = |e: Event| match s.next(&mut sn, e) {
+    let handle_output = |o: Output| match o {
         Output::Ok() => None,
         Output::VoteRequests(reqs) => {
             for req in reqs {
@@ -212,7 +210,7 @@ fn driver(
                 None
             }
         }
-        Output::ClientWaitFor(_) => Some(Event::CheckFollowers()),
+        Output::ClientWaitFor(_, reqs) => Some(Output::AppendEntriesRequests(reqs)),
         Output::AppendEntriesRequests(reqs) => {
             for req in reqs {
                 if tx.send(req.into()).is_err() {
@@ -230,12 +228,12 @@ fn driver(
         }
     };
 
-    let mut rec_event = |e: Event| {
-        let mut e = e;
+    let rec_output = |o: Output| {
+        let mut o = o;
         loop {
-            match handle_event(e) {
+            match handle_output(o) {
                 None => break,
-                Some(new_e) => e = new_e,
+                Some(new_o) => o = new_o,
                 Abort => return Abort,
             }
         }
@@ -250,7 +248,7 @@ fn driver(
             Err(mpsc::TryRecvError::Disconnected) => break,
             Ok(Pause) => go = false,
             Ok(Resume) => go = true,
-            Ok(E(e)) => match rec_event(e) {
+            Ok(E(e)) => match rec_output(s.next(&mut sn, e)) {
                 Abort => break,
                 None => (),
                 Some(_) => unimplemented!("recursive error!"),
@@ -260,7 +258,7 @@ fn driver(
             continue;
         }
         match rx.try_recv() {
-            Ok(e) => match rec_event(e) {
+            Ok(e) => match rec_output(s.next(&mut sn, e)) {
                 Abort => break,
                 None => (),
                 Some(_) => unimplemented!("recursive error!"),
