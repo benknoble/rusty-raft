@@ -116,14 +116,18 @@ impl State {
         self.ids().filter(|&i| i != self.id)
     }
 
-    pub fn next<S: Snapshotter>(&mut self, #[expect(unused)] s: &mut S, e: Event) -> Output {
+    pub fn next<S: Snapshotter>(&mut self, s: &mut S, e: Event) -> Output {
         match e {
             Event::Clock() => self.tick(),
             Event::ApplyEntries() => self.apply_entries(),
-            Event::VoteRequest(req) => Output::VoteResponse(self.vote(req)),
+            Event::VoteRequest(req) => {
+                let _ = s.write(format!("{}_data", self.id), self.to_bytes());
+                Output::VoteResponse(self.vote(req))
+            }
             Event::VoteResponse(rep) => self.receive_vote(rep),
             Event::ClientCmd(app_event) => self.push_cmd(app_event),
             Event::AppendEntriesRequest(req) => {
+                let _ = s.write(format!("{}_data", self.id), self.to_bytes());
                 Output::AppendEntriesResponse(self.append_entries(req))
             }
             Event::AppendEntriesResponse(rep) => self.receive_append_entries_response(rep),
@@ -264,7 +268,6 @@ impl State {
     }
 
     fn vote(&mut self, r: VoteRequest) -> VoteResponse {
-        // TODO: save state before responding
         let r = &r;
         assert!(r.to == self.id);
         if r.term > self.current_term {
@@ -426,7 +429,6 @@ impl State {
 
     fn append_entries(&mut self, r: AppendEntries) -> AppendEntriesResponse {
         assert!(r.to == self.id);
-        // TODO: save state before responding
         macro_rules! fail {
             () => {
                 return AppendEntriesResponse::fail(self.id, r.leader_id, self.current_term, 0)
