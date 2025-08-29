@@ -5,8 +5,13 @@ use std::net as snet;
 use std::sync::*;
 use std::thread;
 
+enum ClientData {
+    ClientWaitFor(usize),
+    AppOutput(Vec<(AppOutput, usize, AppEvent)>),
+}
+
 type Outbox = mpsc::Sender<net::Message>;
-type OutputBox = Option<mpsc::Sender<Output>>;
+type OutputBox = Option<mpsc::Sender<ClientData>>;
 
 fn main() -> Result<(), io::Error> {
     let args: Vec<_> = std::env::args().collect();
@@ -74,7 +79,7 @@ fn main() -> Result<(), io::Error> {
                 }
             }
         });
-        while let Ok((e, _ob)) = rx.recv() {
+        while let Ok((e, ob)) = rx.recv() {
             match state.next(&mut FsSnapshot, e) {
                 Output::Ok() => continue,
                 Output::Results(results) => {
@@ -87,9 +92,12 @@ fn main() -> Result<(), io::Error> {
                     }
                 }
                 Output::VoteResponse(rep) => send(rep.into()),
-                Output::ClientWaitFor(_, reqs) => {
+                Output::ClientWaitFor(i, reqs) => {
                     for req in reqs {
                         send(req.into())
+                    }
+                    if let Some(ob) = ob {
+                        let _ = ob.send(ClientData::ClientWaitFor(i));
                     }
                 }
                 Output::AppendEntriesRequests(reqs) => {
