@@ -30,6 +30,7 @@ pub struct State {
     /// base election timeout value
     /// DO NOT MUTATE
     timeout: u64,
+    time: u64,
 }
 
 // macros
@@ -99,6 +100,7 @@ impl State {
             id,
             cluster_size,
             timeout,
+            time: 0,
         }
     }
 
@@ -116,6 +118,7 @@ impl State {
 
     pub fn next<S: Snapshotter>(&mut self, #[expect(unused)] s: &mut S, e: Event) -> Output {
         match e {
+            Event::Clock() => self.tick(),
             Event::ApplyEntries() => self.apply_entries(),
             Event::ElectionTimeout() => self.maybe_start_election(),
             Event::VoteRequest(req) => Output::VoteResponse(self.vote(req)),
@@ -187,6 +190,11 @@ impl State {
     }
 
     // handler functions
+
+    fn tick(&mut self) -> Output {
+        self.time += 1;
+        Output::Ok()
+    }
 
     fn check_followers(&self) -> Output {
         match &self.t {
@@ -488,6 +496,7 @@ pub enum Output {
 /// Some events are `crate::net::Request`s, but not all!
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Event {
+    Clock(),
     ApplyEntries(),
     ElectionTimeout(),
     CheckFollowers(),
