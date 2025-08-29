@@ -1,0 +1,31 @@
+#! /usr/bin/env bash
+
+set -euo pipefail
+
+declare -A jobs=()
+
+for i in {0..4}; do
+  cargo run -- "$i" debug 2>/tmp/server-"$i" &
+  jobs[$i]=$!
+done
+
+declare -p jobs
+
+trap 'pkill raft' EXIT
+
+while { printf '> '; read -r line; } do
+  case $line in
+    (kill*)
+      i=${line##'kill '}
+      kill "${jobs[$i]}"
+      unset "jobs[$i]"
+      ;;
+    (restart*)
+      i=${line##restart\ }
+      cargo run -- "$i" debug 2>/tmp/server-"$i" &
+      jobs[$i]=$!
+      ;;
+    (q) exit ;;
+    (*) : ;;
+  esac
+done
