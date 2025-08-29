@@ -75,6 +75,10 @@ fn main() -> Result<(), io::Error> {
         while let Ok(e) = rx.recv() {
             match state.next(&mut FsSnapshot, e) {
                 Output::Ok() => continue,
+                Output::Results(results) => {
+                    for _result in results {
+                    }
+                }
                 Output::VoteRequests(reqs) => {
                     for req in reqs {
                         send(req.into())

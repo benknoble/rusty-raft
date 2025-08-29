@@ -65,11 +65,12 @@ fn test_2_servers_manual() {
     loop {
         match s1.next(&mut sn, Event::Clock()) {
             Output::Ok() => continue,
+            Output::Results(_) => continue,
             Output::AppendEntriesRequests(inner) => {
                 reqs = inner;
                 break;
             }
-            _ => assert!(false, "don't know how to process the output"),
+            _ => panic!("don't know how to process the output"),
         }
     }
     let req = find_req(1, reqs);
@@ -136,11 +137,12 @@ fn test_2_servers_manual() {
     loop {
         match s1.next(&mut sn, Event::Clock()) {
             Output::Ok() => continue,
+            Output::Results(_) => continue,
             Output::AppendEntriesRequests(inner) => {
                 reqs = inner;
                 break;
             }
-            _ => assert!(false, "don't know how to process the output"),
+            _ => panic!("don't know how to process the output"),
         }
     }
     let req = find_req(1, reqs);
@@ -166,11 +168,12 @@ fn test_2_servers_manual() {
     loop {
         match s1.next(&mut sn, Event::Clock()) {
             Output::Ok() => continue,
+            Output::Results(_) => continue,
             Output::AppendEntriesRequests(inner) => {
                 reqs = inner;
                 break;
             }
-            _ => assert!(false, "don't know how to process the output"),
+            _ => panic!("don't know how to process the output"),
         }
     }
     let req = find_req(1, reqs);
@@ -190,7 +193,7 @@ fn test_2_servers_manual() {
     );
 
     // tick the clock and apply the entries
-    let Output::Ok() = s1.next(&mut sn, Event::Clock()) else {
+    let Output::Results(_) = s1.next(&mut sn, Event::Clock()) else {
         panic!("don't know how to process the output")
     };
 }
@@ -222,6 +225,7 @@ fn driver(
     use Cont::*;
 
     let handle_output = |o: Output| match o {
+        Output::Results(_) => None,
         Output::Ok() => None,
         Output::VoteRequests(reqs) => {
             for req in reqs {

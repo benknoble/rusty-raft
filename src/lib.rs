@@ -269,14 +269,15 @@ impl State {
     }
 
     fn apply_entries(&mut self) -> Output {
+        let mut results = Vec::with_capacity(self.commit_index - self.last_applied);
         while self.commit_index > self.last_applied {
             self.last_applied += 1;
-            // TODO: do something with this output for clients (only if leader…)
             // Reply will need to include the cmd and index: the ClientWaitFor(i) should only
             // finally reply success if we executed the expected cmd at i
-            self.state.next(self.log[self.last_applied].cmd.clone());
+            let cmd = self.log[self.last_applied].cmd.clone();
+            results.push((self.state.next(cmd.clone()), self.last_applied, cmd));
         }
-        Output::Ok()
+        Output::Results(results)
     }
 
     fn vote(&mut self, r: VoteRequest) -> VoteResponse {
@@ -539,6 +540,7 @@ impl State {
 #[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum Output {
     Ok(),
+    Results(Vec<(AppOutput, usize, AppEvent)>),
     /// enough details to make a RequestVote RPC
     VoteRequests(Vec<VoteRequest>),
     VoteResponse(VoteResponse),
@@ -680,7 +682,7 @@ pub enum AppEvent {
     Delete(String),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum AppOutput {
     Ok(),
     Val(Option<String>),
