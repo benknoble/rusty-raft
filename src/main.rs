@@ -5,6 +5,9 @@ use std::net as snet;
 use std::sync::*;
 use std::thread;
 
+type Outbox = mpsc::Sender<net::Message>;
+type OutputBox = Option<mpsc::Sender<Output>>;
+
 fn main() -> Result<(), io::Error> {
     let args: Vec<_> = std::env::args().collect();
     if args.len() <= 2 {
@@ -33,9 +36,8 @@ fn main() -> Result<(), io::Error> {
         state.debug();
     }
     let listener = snet::TcpListener::bind(addr)?;
-    let (tx, rx) = mpsc::channel::<Event>();
 
-    type Outbox = mpsc::Sender<net::Message>;
+    let (tx, rx) = mpsc::channel::<(Event, OutputBox)>();
 
     // TODO: this should probably use a ThreadPool
     // <https://github.com/benknoble/rust-book-webserver> so that clients can't DoS me?
@@ -72,7 +74,7 @@ fn main() -> Result<(), io::Error> {
                 }
             }
         });
-        while let Ok(e) = rx.recv() {
+        while let Ok((e, _ob)) = rx.recv() {
             match state.next(&mut FsSnapshot, e) {
                 Output::Ok() => continue,
                 Output::Results(results) => {
@@ -103,23 +105,23 @@ fn main() -> Result<(), io::Error> {
     Ok(())
 }
 
-fn clock(id: usize, tx: &mpsc::Sender<Event>) {
+fn clock(id: usize, tx: &mpsc::Sender<(Event, OutputBox)>) {
     loop {
         thread::sleep(std::time::Duration::from_millis(1));
-        if let Err(e) = tx.send(Event::Clock()) {
+        if let Err(e) = tx.send((Event::Clock(), None)) {
             eprintln!("{id}: clock stopping: {e:?}");
             break;
         }
     }
 }
 
-fn handle_client(stream: snet::TcpStream, queue: &mpsc::Sender<Event>) {
+fn handle_client(stream: snet::TcpStream, queue: &mpsc::Sender<(Event, OutputBox)>) {
     let mut parse = net::bytes::Parser::from_reader(&stream);
     for value in parse.iter() {
         let Ok(value) = value else {
             break;
         };
-        if queue.send(value).is_err() {
+        if queue.send((value, None)).is_err() {
             // main server is gone, disconnect
             return;
         }
