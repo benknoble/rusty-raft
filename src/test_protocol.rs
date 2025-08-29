@@ -217,7 +217,6 @@ fn driver(
 
     enum Cont {
         None,
-        Some(Output),
         Abort,
     }
     use Cont::*;
@@ -239,7 +238,14 @@ fn driver(
                 None
             }
         }
-        Output::ClientWaitFor(_, reqs) => Some(Output::AppendEntriesRequests(reqs)),
+        Output::ClientWaitFor(_, reqs) => {
+            for req in reqs {
+                if tx.send(req.into()).is_err() {
+                    return Abort;
+                }
+            }
+            None
+        }
         Output::AppendEntriesRequests(reqs) => {
             for req in reqs {
                 if tx.send(req.into()).is_err() {
@@ -257,18 +263,6 @@ fn driver(
         }
     };
 
-    let rec_output = |o: Output| {
-        let mut o = o;
-        loop {
-            match handle_output(o) {
-                None => break,
-                Some(new_o) => o = new_o,
-                Abort => return Abort,
-            }
-        }
-        None
-    };
-
     use TestEvent::*;
     loop {
         match test_rx.try_recv() {
@@ -277,20 +271,18 @@ fn driver(
             Err(mpsc::TryRecvError::Disconnected) => break,
             Ok(Pause) => go = false,
             Ok(Resume) => go = true,
-            Ok(E(e)) => match rec_output(s.next(&mut sn, e)) {
-                Abort => break,
+            Ok(E(e)) => match handle_output(s.next(&mut sn, e)) {
                 None => (),
-                Some(_) => unimplemented!("recursive error!"),
+                Abort => break,
             },
         }
         if !go {
             continue;
         }
         match rx.try_recv() {
-            Ok(e) => match rec_output(s.next(&mut sn, e)) {
+            Ok(e) => match handle_output(s.next(&mut sn, e)) {
                 Abort => break,
                 None => (),
-                Some(_) => unimplemented!("recursive error!"),
             },
             Err(mpsc::TryRecvError::Empty) => (),
             Err(mpsc::TryRecvError::Disconnected) => break,
