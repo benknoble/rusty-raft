@@ -120,7 +120,6 @@ impl State {
         match e {
             Event::Clock() => self.tick(),
             Event::ApplyEntries() => self.apply_entries(),
-            Event::ElectionTimeout() => self.maybe_start_election(),
             Event::VoteRequest(req) => Output::VoteResponse(self.vote(req)),
             Event::VoteResponse(rep) => self.receive_vote(rep),
             Event::ClientCmd(app_event) => self.push_cmd(app_event),
@@ -248,14 +247,6 @@ impl State {
             self.state.next(self.log[self.last_applied].cmd.clone());
         }
         Output::Ok()
-    }
-
-    fn maybe_start_election(&mut self) -> Output {
-        match self.t {
-            // maybe we've converted before the most recent timeout; ignore it
-            Type::Leader { .. } => Output::Ok(),
-            _ => self.become_candidate(),
-        }
     }
 
     fn vote(&mut self, r: VoteRequest) -> VoteResponse {
@@ -511,7 +502,6 @@ pub enum Output {
 pub enum Event {
     Clock(),
     ApplyEntries(),
-    ElectionTimeout(),
     CheckFollowers(),
     AppendEntriesRequest(AppendEntries),
     AppendEntriesResponse(AppendEntriesResponse),
