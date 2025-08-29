@@ -24,6 +24,11 @@ fn main() -> Result<(), io::Error> {
     let debug = args.len() == 3;
 
     let mut state = State::new(id, net::config::HOSTS.len(), 10_000);
+    // HACK: the State knows when to write, but doesn't tell us where. This is a bit intimate with
+    // the internals for my taste.
+    if let Ok(bytes) = FsSnapshot.read(format!("{}_data", id)) {
+        state = State::from_bytes(id, net::config::HOSTS.len(), 10_000, &bytes)?;
+    }
     if debug {
         state.debug();
     }
