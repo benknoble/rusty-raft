@@ -7,8 +7,8 @@ use std::thread;
 
 fn main() -> Result<(), io::Error> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: {} <id>", args[0]);
+    if args.len() <= 2 {
+        eprintln!("Usage: {} <id> [<debug>]", args[0]);
         std::process::exit(1);
     }
     let id: usize = match args[1].parse() {
@@ -21,7 +21,12 @@ fn main() -> Result<(), io::Error> {
     }
     let addr = net::config::HOSTS[id];
 
+    let debug = args.len() == 3;
+
     let mut state = State::new(id, net::config::HOSTS.len(), 100_000);
+    if debug {
+        state.debug();
+    }
     let listener = snet::TcpListener::bind(addr)?;
     let (tx, rx) = mpsc::channel::<Event>();
 

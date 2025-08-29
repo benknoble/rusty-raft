@@ -31,6 +31,8 @@ pub struct State {
     /// DO NOT MUTATE
     timeout: u64,
     time: u64,
+    /// should we log?
+    debug: bool,
 }
 
 // macros
@@ -101,6 +103,7 @@ impl State {
             cluster_size,
             timeout,
             time: 0,
+            debug: false,
         }
     }
 
@@ -117,6 +120,10 @@ impl State {
     }
 
     pub fn next<S: Snapshotter>(&mut self, s: &mut S, e: Event) -> Output {
+        if let Event::Clock() = e {
+        } else {
+            self.do_debug();
+        }
         match e {
             Event::Clock() => self.tick(),
             Event::VoteRequest(req) => {
@@ -485,9 +492,26 @@ impl State {
         AppendEntriesResponse::succeed(self.id, r.leader_id, self.current_term, match_index)
     }
 
-    // Test functions
+    // Test & debugging functions
 
-    #[cfg(test)]
+    pub fn debug(&mut self) {
+        self.debug = true;
+    }
+
+    fn do_debug(&self) {
+        if self.debug {
+            let id = self.id;
+            let leader = match self.t {
+                Type::Leader { .. } => "*",
+                _ => "",
+            };
+            let term = self.current_term;
+            let commit = self.commit_index;
+            let log = self.debug_log();
+            eprintln!("{id}{leader}(T:{term}, C:{commit}): {log}");
+        }
+    }
+
     fn debug_log(&self) -> String {
         let inner: Vec<_> = self.log[1..]
             .iter()
