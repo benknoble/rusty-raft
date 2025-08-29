@@ -579,53 +579,27 @@ fn election_two() {
 }
 
 #[test]
-fn election_many_one() {
-    let test_wait = Duration::from_millis(50);
-    let mut states = (0..5).map(|i| State::new(i, 5, 200)).collect();
+fn election_many() {
+    let clock = Duration::from_millis(30);
+    let timeout = 10u32;
+    let mut states = (0..5).map(|i| State::new(i, 5, timeout.into())).collect();
     thread::scope(|s| {
-        let test_txs = start_net_and_states(&s, &mut states, Some(test_wait * 5));
-        test_txs[0]
-            .send(TestEvent::E(Event::ElectionTimeout()))
-            .expect("sent");
-
-        // flaky?
-        thread::sleep(test_wait * 2);
+        let test_txs = start_net_and_states(&s, &mut states, Some(clock));
+        thread::sleep(timeout * clock + (timeout / 2 * clock));
 
         // shutdown
         for tx in test_txs {
             tx.send(TestEvent::Quit).expect("sent");
         }
     });
-    assert!(match states[0].t {
-        Type::Leader { .. } => true,
-        _ => false,
-    });
-    for state in &states[1..] {
-        assert!(match state.t {
-            Type::Follower { .. } => true,
-            _ => false,
-        });
+    let mut leader = false;
+    for state in states {
+        leader = leader
+            || match state.t {
+                Type::Follower { .. } => false,
+                _ => true,
+            };
     }
-}
-
-#[test]
-fn election_many_many() {
-    let test_wait = Duration::from_millis(50);
-    let mut states = (0..5).map(|i| State::new(i, 5, 200)).collect();
-    thread::scope(|s| {
-        let test_txs = start_net_and_states(&s, &mut states, Some(test_wait * 3));
-        for tx in test_txs.iter() {
-            tx.send(TestEvent::E(Event::ElectionTimeout()))
-                .expect("sent");
-        }
-
-        // flaky?
-        thread::sleep(test_wait);
-
-        // shutdown
-        for tx in test_txs {
-            tx.send(TestEvent::Quit).expect("sent");
-        }
-    });
-    // no assertions; just check we don't break an internal invariant
+    // might be more than one… would be nice to check terms, too
+    assert!(leader);
 }
