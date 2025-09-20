@@ -1,4 +1,15 @@
-# Running Raft
+# Raft (from [Rusty Boat](http://www.dabeaz.com/rusty_boat.html) August 2025)
+
+This (not quite complete) toy Raft implementation is extracted from my work
+during the Rusty Boat course.
+
+What's missing:
+- (WIP) Proper client replies with results of committed commands
+- Any kind of security (notably: clients can send Raft commands, not just
+  application commands… eek!)
+- More testing/fuzzing/verification
+
+## Running Raft
 
 I like to make 3 terminals:
 
