@@ -1,2 +1,5 @@
+# Rust build outputs
+target
+
 # saved data from real cluster
 *_data
