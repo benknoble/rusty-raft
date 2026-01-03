@@ -39,6 +39,7 @@ fn main() -> Result<(), io::Error> {
             Ok(e) => {
                 let e = Event::ClientCmd(e);
                 (&client).write_all(&e.to_bytes())?;
+                // TODO: receive results
                 // let value: net::Message = parse.parse()?;
                 // println!("{:?}", value);
             }

@@ -11,7 +11,6 @@ enum ClientData {
 }
 
 type Outbox = mpsc::Sender<net::Message>;
-type OutputBox = Option<mpsc::Sender<ClientData>>;
 
 fn main() -> Result<(), io::Error> {
     let args: Vec<_> = std::env::args().collect();
@@ -42,7 +41,9 @@ fn main() -> Result<(), io::Error> {
     }
     let listener = snet::TcpListener::bind(addr)?;
 
-    let (tx, rx) = mpsc::channel::<(Event, OutputBox)>();
+    let (tx, rx) = mpsc::channel::<Event>();
+
+    let waiters = Arc::new(Mutex::new(HashMap::new()));
 
     // TODO: this should probably use a ThreadPool
     // <https://github.com/benknoble/rust-book-webserver> so that clients can't DoS me?
@@ -66,12 +67,15 @@ fn main() -> Result<(), io::Error> {
         s.spawn(|| clock(id, &tx));
         // Handle client connections. These may be command "clients" or cluster "nodes". But when
         // we see a Event::ClientCmd, we'll know ;)
-        // TODO: need to be able to reply to clients
         s.spawn(|| {
-            for stream in listener.incoming() {
+            for (id, stream) in listener.incoming().enumerate() {
                 match stream {
                     Ok(stream) => {
-                        s.spawn(|| handle_client(stream, &tx));
+                        let (waiter_tx, waiter_rx) = mpsc::channel();
+                        waiters.lock().expect("mutex safe").insert(id, waiter_tx);
+                        let tx = &tx;
+                        let waiters = Arc::clone(&waiters);
+                        s.spawn(move || handle_client(stream, tx, waiter_rx, id, waiters));
                     }
                     Err(e) => {
                         eprintln!("{id}: client connection error: {e:?}");
@@ -79,13 +83,21 @@ fn main() -> Result<(), io::Error> {
                 }
             }
         });
-        while let Ok((e, ob)) = rx.recv() {
+        while let Ok(e) = rx.recv() {
             match state.next(&mut FsSnapshot, e) {
                 Output::Ok() => continue,
                 Output::Results(results) => {
-                    for _result in results {
+                    let mut w = waiters.lock().expect("mutex safe");
+                    let mut to_remove = vec![];
+                    for (&id, inbox) in w.iter() {
+                        if inbox.send(ClientData::AppOutput(results.clone())).is_err() {
+                            to_remove.push(id);
+                        }
                     }
-                }
+                    for i in to_remove {
+                        w.remove(&i);
+                    }
+                },
                 Output::VoteRequests(reqs) => {
                     for req in reqs {
                         send(req.into())
@@ -96,8 +108,17 @@ fn main() -> Result<(), io::Error> {
                     for req in reqs {
                         send(req.into())
                     }
-                    if let Some(ob) = ob {
-                        let _ = ob.send(ClientData::ClientWaitFor(i));
+                    let mut w = waiters.lock().expect("mutex safe");
+                    let mut to_remove = vec![];
+                    for (&id, inbox) in w.iter() {
+                        // XXX VERY WRONG TODO
+                        // Only the client that send the incoming request needs to wait. UGH
+                        if inbox.send(ClientData::ClientWaitFor(i)).is_err() {
+                            to_remove.push(id);
+                        }
+                    }
+                    for i in to_remove {
+                        w.remove(&i);
                     }
                 }
                 Output::AppendEntriesRequests(reqs) => {
@@ -113,27 +134,63 @@ fn main() -> Result<(), io::Error> {
     Ok(())
 }
 
-fn clock(id: usize, tx: &mpsc::Sender<(Event, OutputBox)>) {
+fn clock(id: usize, tx: &mpsc::Sender<Event>) {
     loop {
         thread::sleep(std::time::Duration::from_millis(1));
-        if let Err(e) = tx.send((Event::Clock(), None)) {
+        if let Err(e) = tx.send(Event::Clock()) {
             eprintln!("{id}: clock stopping: {e:?}");
             break;
         }
     }
 }
 
-fn handle_client(stream: snet::TcpStream, queue: &mpsc::Sender<(Event, OutputBox)>) {
+fn handle_client(
+    stream: snet::TcpStream,
+    queue: &mpsc::Sender<Event>,
+    inbox: mpsc::Receiver<ClientData>,
+    id: usize,
+    waiters: Arc<Mutex<HashMap<usize, mpsc::Sender<ClientData>>>>,
+) {
+    // we really shouldn't just trust clients… but here we are
     let mut parse = net::bytes::Parser::from_reader(&stream);
     for value in parse.iter() {
         let Ok(value) = value else {
-            break;
-        };
-        if queue.send((value, None)).is_err() {
-            // main server is gone, disconnect
             return;
+        };
+        match value {
+            Event::ClientCmd(e) => {
+                if queue.send(value).is_err() {
+                    // main server is gone, disconnect
+                    return;
+                }
+                let Ok(ClientData::ClientWaitFor(index)) = inbox.recv() else {
+                    return;
+                };
+                let Ok(ClientData::AppOutput(results)) = inbox.recv() else {
+                    return;
+                };
+                // TODO: send success/fail messages as bytes back to client
+                for (result, idx, cmd) in results {
+                    if idx == index && cmd == e {
+                        if (&stream).write_all(result.into()).is_err() {
+                            return;
+                        }
+                        break;
+                    }
+                }
+                if (&stream).write_all(FAIL).is_err() {
+                    return;
+                }
+            }
+            _ => {
+                if queue.send(value).is_err() {
+                    // main server is gone, disconnect
+                    return;
+                }
+            }
         }
     }
+    waiters.lock().expect("mutex safe").remove(&id);
 }
 
 fn manage_host(id: usize, addr: &str, host_id: usize, host_rx: mpsc::Receiver<net::Message>) {
