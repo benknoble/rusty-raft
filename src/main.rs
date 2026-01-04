@@ -10,7 +10,7 @@ enum ClientData {
     AppOutput(Vec<(AppOutput, usize, AppEvent)>),
 }
 
-type Outbox = mpsc::Sender<net::Message>;
+type HostOutbox = mpsc::Sender<net::Message>;
 type OutputBox = Option<mpsc::Sender<ClientData>>;
 
 fn main() -> Result<(), io::Error> {
@@ -48,17 +48,17 @@ fn main() -> Result<(), io::Error> {
     // <https://github.com/benknoble/rust-book-webserver> so that clients can't DoS me?
     thread::scope(|s| {
         // manage host connections
-        let mut outboxes: HashMap<usize, Outbox> = HashMap::new();
+        let mut host_outboxes: HashMap<usize, HostOutbox> = HashMap::new();
         for (host_id, &addr) in net::config::HOSTS.iter().enumerate() {
             if host_id == id {
                 continue;
             }
             let (host_tx, host_rx) = mpsc::channel();
-            outboxes.insert(host_id, host_tx);
+            host_outboxes.insert(host_id, host_tx);
             s.spawn(move || manage_host(id, addr, host_id, host_rx));
         }
         let send = |m: net::Message| {
-            if let Err(e) = outboxes[&m.to()].send(m) {
+            if let Err(e) = host_outboxes[&m.to()].send(m) {
                 eprintln!("{id}: error sending message: {e:?}");
             }
         };
