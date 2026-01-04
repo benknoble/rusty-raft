@@ -6,12 +6,13 @@ use std::sync::*;
 use std::thread;
 
 enum ClientData {
-    ClientWaitFor(usize),
-    AppOutput(Vec<(AppOutput, usize, AppEvent)>),
+    WaitFor(usize),
+    AppOutput(Arc<Vec<(AppOutput, usize, AppEvent)>>),
 }
 
 type HostOutbox = mpsc::Sender<net::Message>;
-type OutputBox = Option<mpsc::Sender<ClientData>>;
+type ClientOutbox = mpsc::Sender<ClientData>;
+type OutputBox = Option<ClientOutbox>;
 
 fn main() -> Result<(), io::Error> {
     let args: Vec<_> = std::env::args().collect();
@@ -79,12 +80,17 @@ fn main() -> Result<(), io::Error> {
                 }
             }
         });
+        // TODO: use a HashMap with random usize keys: HashSet requires Eq + Hash (which senders
+        // aren't), Vec means that removing random boxes moves a bunch of memory around.
+        let mut client_outboxes: Vec<ClientOutbox> = Vec::new();
+        // TODO: maybe this type should enforce that we only get outboxes with client events?
         while let Ok((e, ob)) = rx.recv() {
             match state.next(&mut FsSnapshot, e) {
                 Output::Ok() => continue,
                 Output::Results(results) => {
-                    for _result in results {
-                    }
+                    let results = Arc::new(results);
+                    client_outboxes
+                        .retain(|c| c.send(ClientData::AppOutput(results.clone())).is_ok())
                 }
                 Output::VoteRequests(reqs) => {
                     for req in reqs {
@@ -96,8 +102,10 @@ fn main() -> Result<(), io::Error> {
                     for req in reqs {
                         send(req.into())
                     }
-                    if let Some(ob) = ob {
-                        let _ = ob.send(ClientData::ClientWaitFor(i));
+                    if let Some(ob) = ob
+                        && ob.send(ClientData::WaitFor(i)).is_ok()
+                    {
+                        client_outboxes.push(ob);
                     }
                 }
                 Output::AppendEntriesRequests(reqs) => {
