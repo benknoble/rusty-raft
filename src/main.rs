@@ -67,7 +67,6 @@ fn main() -> Result<(), io::Error> {
         s.spawn(|| clock(id, &tx));
         // Handle client connections. These may be command "clients" or cluster "nodes". But when
         // we see a Event::ClientCmd, we'll know ;)
-        // TODO: need to be able to reply to clients
         s.spawn(|| {
             for stream in listener.incoming() {
                 match stream {
@@ -135,11 +134,59 @@ fn handle_client(stream: snet::TcpStream, queue: &mpsc::Sender<(Event, OutputBox
     let mut parse = net::bytes::Parser::from_reader(&stream);
     for value in parse.iter() {
         let Ok(value) = value else {
-            break;
-        };
-        if queue.send((value, None)).is_err() {
-            // main server is gone, disconnect
             return;
+        };
+        match value {
+            Event::ClientCmd(event) => {
+                let (tx, rx) = mpsc::channel();
+                if queue
+                    .send((Event::ClientCmd(event.clone()), Some(tx)))
+                    .is_err()
+                {
+                    // main server is gone, disconnect
+                    return;
+                }
+                let log_index = loop {
+                    let Ok(x) = rx.recv() else {
+                        // main server is gone, disconnect
+                        return;
+                    };
+                    if let ClientData::WaitFor(i) = x {
+                        // our cmd was received
+                        break i;
+                    }
+                };
+                let result = 'result: loop {
+                    let Ok(x) = rx.recv() else {
+                        // main server is gone, disconnect
+                        return;
+                    };
+                    if let ClientData::AppOutput(results) = x {
+                        for (output, index, cmd) in results.iter() {
+                            if log_index == *index {
+                                if event == *cmd {
+                                    // our cmd was committed at the expected index
+                                    break 'result output.clone()
+                                } else {
+                                    // committed a different cmd at the index we were waiting for;
+                                    // die so client can retry
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                };
+                if let Err(e) = (&stream).write_all(result.to_bytes().as_slice()) {
+                    eprintln!("{e}");
+                    return;
+                }
+            }
+            _ => {
+                if queue.send((value, None)).is_err() {
+                    // main server is gone, disconnect
+                    return;
+                }
+            }
         }
     }
 }

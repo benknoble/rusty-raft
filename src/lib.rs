@@ -682,7 +682,7 @@ pub enum AppEvent {
     Delete(String),
 }
 
-#[derive(Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub enum AppOutput {
     Ok(),
     Val(Option<String>),

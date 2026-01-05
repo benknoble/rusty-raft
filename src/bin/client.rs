@@ -20,7 +20,7 @@ fn main() -> Result<(), io::Error> {
     let client = snet::TcpStream::connect(addr).expect("could not connect");
 
     let mut buf = String::new();
-    // let mut parse = net::bytes::Parser::from_reader(&client);
+    let mut parse = net::bytes::Parser::from_reader(&client);
 
     loop {
         buf.clear();
@@ -39,8 +39,8 @@ fn main() -> Result<(), io::Error> {
             Ok(e) => {
                 let e = Event::ClientCmd(e);
                 (&client).write_all(&e.to_bytes())?;
-                // let value: net::Message = parse.parse()?;
-                // println!("{:?}", value);
+                let value: AppOutput = parse.parse()?;
+                println!("{:?}", value);
             }
         }
     }

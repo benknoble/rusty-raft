@@ -118,6 +118,12 @@ impl Output {
     }
 }
 
+impl AppOutput {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        serde_lexpr::to_vec(self).expect("serialization error")
+    }
+}
+
 impl std::str::FromStr for AppEvent {
     type Err = serde_lexpr::error::Error;
 
