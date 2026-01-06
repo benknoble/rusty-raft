@@ -159,6 +159,7 @@ impl State {
             voters: [self.id].into(),
             election_deadline: self.time.wrapping_add(jitter(self.timeout)),
         };
+        self.do_debug();
         if self.has_majority_votes() {
             // can only happen when cluster_size == 1, so it's OK to not send out the requests
             assert_eq!(self.cluster_size, 1);
@@ -505,14 +506,15 @@ impl State {
     fn do_debug(&self) {
         if self.debug {
             let id = self.id;
-            let leader = match self.t {
+            let typ = match self.t {
                 Type::Leader { .. } => "*",
+                Type::Candidate { .. } => "?",
                 _ => "",
             };
             let term = self.current_term;
             let commit = self.commit_index;
             let log = self.debug_log();
-            eprintln!("{id}{leader}(T:{term}, C:{commit}): {log}");
+            eprintln!("{id}{typ}(T:{term}, C:{commit}): {log}");
         }
     }
 
