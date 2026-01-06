@@ -8,6 +8,16 @@ What's missing:
   application commands… eek!)
 - More testing/fuzzing/verification
 
+One notable difference from the original paper: instead of requiring read-only
+(`Get`) requests to send out heartbeats (and committing no-ops when a leader
+takes over), we commit them. This simplifies the protocol at what seems like the
+expense of some performance (since we now have to wait until the request is
+committed), but waiting for a majority of heartbeats is essentially the same
+cost unless there's a significant skew in logs, which is not the normal state by
+far. There _is_ a cost in storage to committing the read-only requests, but it
+also means they are present in logs, which is great for debugging: we can
+compute what the response would have been and track that they happened.
+
 ## Running Raft
 
 I like to make 3 terminals:
