@@ -21,7 +21,7 @@ while { printf '> '; read -r line; } do
       unset "jobs[$i]"
       ;;
     (restart*)
-      i=${line##restart\ }
+      i=${line##'restart '}
       cargo run -- "$i" debug 2>/tmp/server-"$i" &
       jobs[$i]=$!
       ;;
