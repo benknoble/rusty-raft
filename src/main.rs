@@ -16,7 +16,7 @@ type OutputBox = Option<ClientOutbox>;
 
 fn main() -> Result<(), io::Error> {
     let args: Vec<_> = std::env::args().collect();
-    if args.len() <= 2 {
+    if args.len() < 2 {
         eprintln!("Usage: {} <id> [<debug>]", args[0]);
         std::process::exit(1);
     }
