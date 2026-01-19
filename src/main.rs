@@ -14,6 +14,10 @@ type HostOutbox = mpsc::Sender<net::Message>;
 type ClientOutbox = mpsc::Sender<ClientData>;
 type OutputBox = Option<ClientOutbox>;
 
+// Every CLIENT_RECLAMATION clients, attempt to reduce memory used for keeping track of waiting
+// clients.
+const CLIENT_RECLAMATION: usize = 1_000;
+
 fn main() -> Result<(), io::Error> {
     let args: Vec<_> = std::env::args().collect();
     if args.len() < 2 {
@@ -120,6 +124,9 @@ fn main() -> Result<(), io::Error> {
                             key = key.wrapping_add(1);
                         } else {
                             eprintln!("Reused key {key} for outboxes after wraparound; new client waiting on {i} dropped");
+                        }
+                        if key.is_multiple_of(CLIENT_RECLAMATION) {
+                            client_outboxes.shrink_to_fit();
                         }
                     }
                 }
