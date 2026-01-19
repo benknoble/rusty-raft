@@ -79,9 +79,8 @@ fn main() -> Result<(), io::Error> {
                 }
             }
         });
-        // TODO: use a HashMap with random usize keys: HashSet requires Eq + Hash (which senders
-        // aren't), Vec means that removing random boxes moves a bunch of memory around.
-        let mut client_outboxes: Vec<ClientOutbox> = Vec::new();
+        let mut client_outboxes: HashMap<usize, ClientOutbox> = HashMap::new();
+        let mut key = 0usize;
         // TODO: maybe this type should enforce that we only get outboxes with client events?
         while let Ok((e, ob)) = rx.recv() {
             match state.next(&mut FsSnapshot, e) {
@@ -89,7 +88,7 @@ fn main() -> Result<(), io::Error> {
                 Output::Results(results) => {
                     let results = Arc::new(results);
                     client_outboxes
-                        .retain(|c| c.send(ClientData::AppOutput(results.clone())).is_ok())
+                        .retain(|_, c| c.send(ClientData::AppOutput(results.clone())).is_ok())
                 }
                 Output::VoteRequests(reqs) => {
                     for req in reqs {
@@ -104,7 +103,24 @@ fn main() -> Result<(), io::Error> {
                     if let Some(ob) = ob
                         && ob.send(ClientData::WaitFor(i)).is_ok()
                     {
-                        client_outboxes.push(ob);
+                        // Even on 32-bit platforms, it would take significant drift to have client
+                        // 0 still waiting after adding client 2^32-1 and getting a new client. A
+                        // massive flood of clients _could_ cause this? (But we should get clock
+                        // ticks, process those clients, and eventually evict them from the map… it
+                        // would be nice if we could evict them as soon as they disconnected, rather
+                        // than waiting for next pass…)
+                        //
+                        // The old client is waiting on us and is only retained above if sending
+                        // messages to it succeeds (it will drop from the map when we send a message
+                        // _after_ the one it's waiting on). Without a sync_channel, we can't probe
+                        // if that's ready to go, so for now we just drop the new client as a matter
+                        // of rate limiting.
+                        if let hash_map::Entry::Vacant(e) = client_outboxes.entry(key) {
+                            e.insert(ob);
+                            key = key.wrapping_add(1);
+                        } else {
+                            eprintln!("Reused key {key} for outboxes after wraparound; new client waiting on {i} dropped");
+                        }
                     }
                 }
                 Output::AppendEntriesRequests(reqs) => {
