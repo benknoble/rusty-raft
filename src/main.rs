@@ -131,6 +131,22 @@ fn clock(id: usize, tx: &mpsc::Sender<(Event, OutputBox)>) {
 }
 
 fn handle_client(stream: snet::TcpStream, queue: &mpsc::Sender<(Event, OutputBox)>) {
+    // Failure to send notice back to the main server thread causes us to hang up on the client (via
+    // return), and same for receiving data. That also means any thread running this proc end (see
+    // below). If the main thread's sender or reciever is gone, though, we have bigger problems
+    // than, say, dropping messages from other cluster nodes. So we probably _should_ die ASAP and
+    // let an operator restart us.
+    //
+    // NB any Raft nodes using handle_client are equipped to handle messages not getting through, in
+    // the sense that this node should be considered "faulty", but this node won't attempt to
+    // reestablish a connection. It will effectively drop all messages from nodes where this has
+    // happened, so we can only allow it in specific scenarios:
+    // (a) When the node send us bad data: in any Raft client that's a [this implementation of] Raft
+    // bug, but in app clients it's a client bug.
+    // (b) When processing app client requests, we are allowed to die without issue.
+    //
+    // Panics (when not handling app clients) are similarly problematic and should be considered a
+    // Raft implementation bug here.
     let mut parse = net::bytes::Parser::from_reader(&stream);
     for value in parse.iter() {
         let Ok(value) = value else {
@@ -146,36 +162,8 @@ fn handle_client(stream: snet::TcpStream, queue: &mpsc::Sender<(Event, OutputBox
                     // main server is gone, disconnect
                     return;
                 }
-                let log_index = loop {
-                    let Ok(x) = rx.recv() else {
-                        // main server is gone, disconnect
-                        return;
-                    };
-                    if let ClientData::WaitFor(i) = x {
-                        // our cmd was received
-                        break i;
-                    }
-                };
-                let result = 'result: loop {
-                    let Ok(x) = rx.recv() else {
-                        // main server is gone, disconnect
-                        return;
-                    };
-                    if let ClientData::AppOutput(results) = x {
-                        for (output, index, cmd) in results.iter() {
-                            if log_index == *index {
-                                if event == *cmd {
-                                    // our cmd was committed at the expected index
-                                    break 'result output.clone()
-                                } else {
-                                    // committed a different cmd at the index we were waiting for;
-                                    // die so client can retry
-                                    return;
-                                }
-                            }
-                        }
-                    }
-                };
+                let Some(log_index) = client_wait_for_wait_for(&rx) else { return; };
+                let Some(result) = client_wait_for_output(log_index, event, &rx) else { return; };
                 if let Err(e) = (&stream).write_all(result.to_bytes().as_slice()) {
                     eprintln!("{e}");
                     return;
@@ -204,6 +192,40 @@ fn manage_host(id: usize, addr: &str, host_id: usize, host_rx: mpsc::Receiver<ne
             }
             Err(_) => {
                 let _drop_message = host_rx.try_recv();
+            }
+        }
+    }
+}
+
+fn client_wait_for_wait_for(rx: &mpsc::Receiver<ClientData>) -> Option<usize> {
+    loop {
+        let Ok(x) = rx.recv() else {
+            return None;
+        };
+        if let ClientData::WaitFor(i) = x {
+            // our cmd was received
+            return Some(i);
+        }
+    }
+}
+
+fn client_wait_for_output(log_index: usize, event: AppEvent, rx: &mpsc::Receiver<ClientData>) -> Option<AppOutput> {
+    loop {
+        let Ok(x) = rx.recv() else {
+            return None;
+        };
+        if let ClientData::AppOutput(results) = x {
+            for (output, index, cmd) in results.iter() {
+                if log_index == *index {
+                    if event == *cmd {
+                        // our cmd was committed at the expected index
+                        return Some(output.clone());
+                    } else {
+                        // committed a different cmd at the index we were waiting for;
+                        // die so client can retry
+                        return None;
+                    }
+                }
             }
         }
     }
