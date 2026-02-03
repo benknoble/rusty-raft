@@ -1,5 +1,7 @@
 # Raft (from [Rusty Boat](http://www.dabeaz.com/rusty_boat.html) August 2025)
 
+[![This project is considered experimental](https://img.shields.io/badge/status-experimental-critical.svg)](https://benknoble.github.io/status/experimental/)
+
 This (incomplete) toy Raft implementation is extracted from my work
 during the Rusty Boat course.
 
