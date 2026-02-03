@@ -1,6 +1,6 @@
 # Raft (from [Rusty Boat](http://www.dabeaz.com/rusty_boat.html) August 2025)
 
-This (not quite complete) toy Raft implementation is extracted from my work
+This (incomplete) toy Raft implementation is extracted from my work
 during the Rusty Boat course.
 
 What's missing:
