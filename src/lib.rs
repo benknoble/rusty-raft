@@ -121,6 +121,10 @@ impl State {
         self.ids().filter(|&i| i != self.id)
     }
 
+    pub fn storage(&self) -> String {
+        format!("{}_data", self.id)
+    }
+
     pub fn next<S: Snapshotter>(&mut self, s: &mut S, e: Event) -> Output {
         if let Event::Clock() = e {
         } else {
@@ -129,13 +133,13 @@ impl State {
         match e {
             Event::Clock() => self.tick(),
             Event::VoteRequest(req) => {
-                let _ = s.write(format!("{}_data", self.id), self.to_bytes());
+                let _ = s.write(self.storage(), self.to_bytes());
                 Output::VoteResponse(self.vote(req))
             }
             Event::VoteResponse(rep) => self.receive_vote(rep),
             Event::ClientCmd(app_event) => self.push_cmd(app_event),
             Event::AppendEntriesRequest(req) => {
-                let _ = s.write(format!("{}_data", self.id), self.to_bytes());
+                let _ = s.write(self.storage(), self.to_bytes());
                 Output::AppendEntriesResponse(self.append_entries(req))
             }
             Event::AppendEntriesResponse(rep) => self.receive_append_entries_response(rep),
